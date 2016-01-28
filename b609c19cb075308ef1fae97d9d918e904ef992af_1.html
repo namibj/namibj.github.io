@@ -1,0 +1,794 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8">
+<title>~\Documents\JugendForscht\MFNSBDWNMNNLS\cuda\MFNSBDWNMNNLS\src\main.m4.html</title>
+<meta name="Generator" content="Vim/7.4">
+<meta name="plugin-version" content="vim7.4_v1">
+<meta name="syntax" content="m4">
+<meta name="settings" content="use_css,pre_wrap,no_foldcolumn,expand_tabs,prevent_copy=">
+<meta name="colorscheme" content="solarized">
+<style type="text/css">
+<!--
+pre { white-space: pre-wrap; font-family: monospace; color: #839496; background-color: #002b36; }
+body { font-family: monospace; color: #839496; background-color: #002b36; }
+* { font-size: 1em; }
+.Type { color: #b58900; }
+.Statement { color: #719e07; }
+.Comment { color: #586e75; font-style: italic; }
+.Constant { color: #2aa198; }
+.Special { color: #dc322f; }
+.Identifier { color: #268bd2; }
+.Todo { color: #d33682; font-weight: bold; }
+-->
+</style>
+
+<script type='text/javascript'>
+<!--
+
+-->
+</script>
+</head>
+<body>
+<pre id='vimCodeElement'>
+/*
+ *  Copyright 2015 Merlin Kramer
+ *  Licensed under the GNU Affero General Public License v3.0
+ */
+#include &lt;stdio.h&gt;
+#include &lt;stdlib.h&gt;
+#include &lt;cufftXt.h&gt;
+#include &lt;assert.h&gt;
+#include &lt;sm_32_intrinsics.h&gt;
+#include &lt;cuda_runtime_api.h&gt;
+#include &lt;math.h&gt;
+#include &lt;driver_functions.h&gt;
+#include &lt;unistd.h&gt;
+#include &lt;sched.h&gt;
+#include &lt;pthread.h&gt;
+include(`m4_redefines.m4')dnl
+define(`stop', defn(`dnl'))dnl
+changequote(`[', `]') stop ´´)
+changequote([`], [´])
+include(`m4_changeword_evil_utf8.m4´)<span class="Comment">@dnl°</span>
+<span class="Identifier">@define(</span><span class="Constant">`@stop´</span>, <span class="Constant">`</span><span class="Comment">@dnl°´)@dnl°</span>
+<span class="Comment">@dnl° define(`@CALL_APPEND´,`define(`@DEF_MYLIST°´,ifdef(`@DEF_MYLIST´,`[changequote([,])@DEF_MYLIST°[,$1]changequote(`,´)]´,[$1]))´)</span>
+<span class="Identifier">@define(</span><span class="Constant">`@DEF_NUM_PATCHES_X´</span>, 5<span class="Identifier">)</span><span class="Comment">@dnl°</span>
+<span class="Identifier">@define(</span><span class="Constant">`@DEF_NUM_PATCHES_Y´</span>, 5<span class="Identifier">)</span><span class="Comment">@dnl°</span>
+<span class="Identifier">@define(</span><span class="Constant">`@DEF_storedSizeX´</span>, 128<span class="Identifier">)</span><span class="Comment">@dnl°</span>
+<span class="Identifier">@define(</span><span class="Constant">`@DEF_SLEEP_TIME_POLL´</span>, 500<span class="Identifier">)</span><span class="Comment">@dnl°</span>
+<span class="Identifier">@define(</span><span class="Constant">`@DEF_FFT_SIZE´</span>, <span class="Statement">@eval(</span>2 ** 8<span class="Statement">)</span><span class="Identifier">)</span><span class="Comment">@dnl°</span>
+<span class="Identifier">@define(</span><span class="Constant">`@DEF_SIZE_HALF_F´</span>, <span class="Statement">@eval(</span><span class="Special">(</span><span class="Type">@DEF_FFT_SIZE°</span> - <span class="Type">@DEF_storedSizeX°</span><span class="Special">)</span>/2<span class="Statement">)</span><span class="Identifier">)</span><span class="Comment">@dnl°</span>
+<span class="Identifier">@define(</span><span class="Constant">`@DEF_SIZE_F´</span>, <span class="Statement">@eval(</span><span class="Type">@DEF_SIZE_HALF_F°</span> * 2 + 1<span class="Statement">)</span><span class="Identifier">)</span><span class="Comment">@dnl°</span>
+<span class="Identifier">@define(</span><span class="Constant">`@DEF_concatVarSize´</span>, <span class="Statement">@eval(</span>2 ** 8<span class="Statement">)</span><span class="Identifier">)</span><span class="Comment">@dnl°</span>
+<span class="Identifier">@define(</span><span class="Constant">`@DEF_FFT_PRECISION´</span>, <span class="Constant">`</span><span class="Statement">@ifelse(</span><span class="Constant">`R´</span>, <span class="Constant">`</span><span class="Special">$1</span><span class="Constant">´</span>, <span class="Constant">`cufftReal´</span>, <span class="Constant">`C´</span>, <span class="Constant">`</span><span class="Special">$1</span><span class="Constant">´</span>, <span class="Constant">`cufftComplex´</span><span class="Statement">)</span><span class="Constant">´</span><span class="Identifier">)</span><span class="Comment">@dnl°</span>
+<span class="Identifier">@define(</span><span class="Constant">`@DEF_FFT_PRECISION_TYPE´</span>, <span class="Constant">`float´</span><span class="Identifier">)</span><span class="Comment">@dnl°</span>
+<span class="Identifier">@define(</span><span class="Constant">`@DEF_m´</span>, <span class="Statement">@eval(</span>10 * 2<span class="Statement">)</span><span class="Identifier">)</span><span class="Comment">@dnl° The non-monotonic NNLS solvers inner iteration count M, which has to be even.</span>
+<span class="Identifier">@define(</span><span class="Constant">`@DEF_N_target_optimization_F´</span>, <span class="Constant">`1e-5´</span><span class="Identifier">)</span><span class="Comment">@dnl° The target value to get |\nabla f| to before stopping the optimizations of F</span>
+<span class="Identifier">@define(</span><span class="Constant">`@DEF_N_target_optimization_X´</span>, <span class="Constant">`1e-40´</span><span class="Identifier">)</span><span class="Comment">@dnl° The target value to get |\nabla f| to before stopping the optimizations of X</span>
+<span class="Identifier">@define(</span><span class="Constant">`@DEF_BETA_F´</span>, <span class="Constant">`0.5´</span><span class="Identifier">)</span><span class="Comment">@dnl° The non-monotonic NNLS solvers tweaking parameter β for optimizeF()</span>
+<span class="Identifier">@define(</span><span class="Constant">`@DEF_SIGMA_F´</span>, <span class="Constant">`0.5´</span><span class="Identifier">)</span><span class="Comment">@dnl° The non-monotonic NNLS solvers tweaking parameter σ for optimizeF()</span>
+<span class="Identifier">@define(</span><span class="Constant">`@DEF_BETA_X´</span>, <span class="Constant">`0.5´</span><span class="Identifier">)</span><span class="Comment">@dnl° The non-monotonic NNLS solvers tweaking parameter β for optimizeX()</span>
+<span class="Identifier">@define(</span><span class="Constant">`@DEF_SIGMA_X´</span>, <span class="Constant">`0.5´</span><span class="Identifier">)</span><span class="Comment">@dnl° The non-monotonic NNLS solvers tweaking parameter σ for optimizeX()</span>
+<span class="Identifier">@define(</span><span class="Constant">`@CALL_GEWICHTUNG´</span>, <span class="Constant">`</span><span class="Special">((</span>1-abs<span class="Special">((</span><span class="Special">$1</span><span class="Special">)</span>- <span class="Special">(</span>0.5f * <span class="Special">(</span><span class="Type">@DEF_storedSizeX°</span> - 1<span class="Special">))</span>+0.5f<span class="Special">)</span>*<span class="Special">(</span>2.f/<span class="Special">(</span><span class="Type">@DEF_storedSizeX°</span>+1<span class="Special">)))</span>* <span class="Special">(</span>1-abs<span class="Special">((</span><span class="Special">$2</span><span class="Special">)</span>- <span class="Special">(</span>0.5f * <span class="Special">(</span><span class="Type">@DEF_storedSizeX°</span> - 1<span class="Special">))</span>+0.5f<span class="Special">)</span>*<span class="Special">(</span>2.f/<span class="Special">(</span><span class="Type">@DEF_storedSizeX°</span>+1<span class="Special">))))</span><span class="Constant">´</span><span class="Identifier">)</span><span class="Comment">@dnl° The trusty macro to calculate the correct wheigh for a given coordinate</span>
+<span class="Identifier">@define(</span><span class="Constant">`@DEF_BLOCK_TOO_HIGH_THREADS_XY´</span>, <span class="Constant">`if </span><span class="Special">(</span>blockIdx.x == gridDim.x -1 &amp;&amp; threadIdx.x &gt;= <span class="Special">(</span><span class="Statement">@eval(</span><span class="Special">((</span><span class="Type">@DEF_NUM_PATCHES_X°</span> + 1<span class="Special">)</span> * <span class="Type">@DEF_storedSizeX°</span> / 2<span class="Special">)</span> * <span class="Special">((</span><span class="Type">@DEF_NUM_PATCHES_Y°</span> + 1<span class="Special">)</span> * <span class="Type">@DEF_storedSizeX°</span> / 2<span class="Special">)</span> -1<span class="Statement">)</span> -<span class="Special">(</span>gridDim.x -1<span class="Special">)</span> * blockDim.x<span class="Special">))</span><span class="Constant">´</span><span class="Identifier">)</span><span class="Comment">@dnl° This is only the opening if(), not the {} nor an else</span>
+<span class="Identifier">@define(</span><span class="Constant">`@DEF_NUM_PATCHES´</span>, <span class="Statement">@eval(</span><span class="Type">@DEF_NUM_PATCHES_X°</span> * <span class="Type">@DEF_NUM_PATCHES_Y°</span><span class="Statement">)</span><span class="Identifier">)</span><span class="Constant"> </span><span class="Comment">@dnl° just the total count of patches</span>
+<span class="Identifier">@define(</span><span class="Constant">`@DEF_F_SQRD´</span>, <span class="Statement">@eval(</span><span class="Type">@DEF_SIZE_F°</span> ** 2<span class="Statement">)</span><span class="Identifier">)</span><span class="Constant"> </span><span class="Comment">@dnl° the number of values in one f</span>
+<span class="Identifier">@define(</span><span class="Constant">`@DEF_NUM_F_VALS´</span>, <span class="Statement">@eval(</span><span class="Type">@DEF_NUM_PATCHES°</span> * <span class="Type">@DEF_F_SQRD°</span><span class="Statement">)</span><span class="Identifier">)</span><span class="Constant"> </span><span class="Comment">@dnl° the total number of values of all f</span>
+<span class="Identifier">@define(</span><span class="Constant">`@DEF_SIZE_Y´</span>, <span class="Statement">@eval(</span><span class="Special">(</span><span class="Type">@DEF_storedSizeX°</span> / 2<span class="Special">)</span> ** 2 * <span class="Special">(</span><span class="Type">@DEF_NUM_PATCHES_X°</span> + 1<span class="Special">)</span> * <span class="Special">(</span><span class="Type">@DEF_NUM_PATCHES_Y°</span> + 1<span class="Special">)</span><span class="Statement">)</span><span class="Identifier">)</span><span class="Constant"> </span><span class="Comment">@dnl° the number of elements in an y-space</span>
+
+<span class="Constant">__global__ void kernel_set_float_zero</span><span class="Special">(</span>float* data, int lastBlockMax<span class="Special">)</span><span class="Constant"> {</span>
+<span class="Constant">  if </span><span class="Special">(</span>blockIdx.x != <span class="Special">(</span>gridDim.x - 1<span class="Special">)</span> || threadIdx.x &lt; lastBlockMax<span class="Special">)</span>
+<span class="Constant">    data[blockIdx.x * blockDim.x + threadIdx.x] = 0.f;</span>
+
+<span class="Constant">}</span>
+<span class="Constant">typedef int boolean;</span>
+<span class="Constant">struct store_f_X_T_1_informations {</span>
+<span class="Constant">  float* vec_f_o;</span>
+<span class="Constant">  float* vec_nabla_f_o;</span>
+<span class="Constant">  float alpha;</span>
+<span class="Constant">  float beta;</span>
+<span class="Constant">  float* nabla_f_o_scalar_prod_bracketo_x_o_minus_new_f_bracketc_part_sums_d;</span>
+<span class="Constant">  float* nabla_f_scalar_prod_delta_f_part_sums;</span>
+<span class="Constant">  int block_num;</span>
+<span class="Constant">  int block_size;</span>
+<span class="Constant">  union{</span>
+<span class="Constant">  float* abs_vec_nabla_f_part_sums;</span>
+<span class="Constant">  float* abs_vec_delta_f_part_sums;</span>
+<span class="Constant">  };</span>
+<span class="Constant">};</span>
+<span class="Constant">struct streamCallback_informations{</span>
+<span class="Constant">  int b;</span>
+<span class="Constant">  float* f_n_h;</span>
+<span class="Constant">  boolean finished;</span>
+<span class="Constant">  struct store_f_X_T_1_informations * helper_struct_d;</span>
+<span class="Constant">  struct store_f_X_T_1_informations * helper_struct_h;</span>
+<span class="Constant">  float* part_sums_var_h;</span>
+<span class="Constant">  float* delta_nabla_f_part_sums_h;</span>
+<span class="Constant">  float* nabla_f_o_scalar_prod_bracketo_x_o_minus_new_f_bracketc_part_sums_h;</span>
+<span class="Constant">  float f_o_h;</span>
+<span class="Constant">};</span>
+<span class="Identifier">@define(</span><span class="Constant">`@CALL_BUTTERFLY_REDUCTION´</span>,<span class="Constant">`{ for</span><span class="Special">(</span> int i = 16; i &gt;= 1; i /= 2<span class="Special">)</span><span class="Constant"> </span><span class="Special">$1</span><span class="Constant"> += __shfl_xor</span><span class="Special">(</span><span class="Special">$1</span>, i, 32<span class="Special">)</span><span class="Constant">;}´</span><span class="Identifier">)</span><span class="Constant"> </span><span class="Comment">@dnl° Basic additive XOR butterfly reduction across current warp on the given argument</span>
+<span class="Identifier">@define(</span><span class="Constant">`@CALL_BUTTERFLY_BLOCK_REDUCTION´</span>, <span class="Constant">`{ //Reduction</span>
+<span class="Constant">    </span><span class="Type">@CALL_BUTTERFLY_REDUCTION(</span><span class="Special">$1</span><span class="Type">)</span>
+<span class="Constant">    if</span><span class="Special">(</span>threadIdx.x%32==0<span class="Special">)</span><span class="Constant"> </span><span class="Statement">@ifelse(</span><span class="Constant">`s´</span>, <span class="Constant">`</span><span class="Special">$3</span><span class="Constant">´</span>, <span class="Constant">`</span><span class="Special">((</span>float*<span class="Special">)</span> sharedPointer<span class="Special">)</span><span class="Constant">[threadIdx.x / 32]´</span>, <span class="Constant">`part_Sums[threadIdx.x / 32]´</span><span class="Statement">)</span><span class="Constant"> = </span><span class="Special">$1</span><span class="Constant">;</span>
+<span class="Constant">    __syncthreads</span><span class="Special">()</span><span class="Constant">;</span>
+<span class="Constant">    if</span><span class="Special">(</span>threadIdx.x/32 == 0<span class="Special">)</span><span class="Constant"> {</span>
+<span class="Constant">      </span><span class="Special">$1</span><span class="Constant"> = </span><span class="Statement">@ifelse(</span><span class="Constant">`s´</span>, <span class="Constant">`</span><span class="Special">$3</span><span class="Constant">´</span>, <span class="Constant">`</span><span class="Special">(</span>threadIdx.x/32 &gt; blockDim.x/32<span class="Special">)</span><span class="Constant">? 0 : </span><span class="Special">((</span>float*<span class="Special">)</span> sharedPointer<span class="Special">)</span><span class="Constant">[threadIdx.x &amp; 0x1f];´</span>, <span class="Constant">`part_Sums[threadIdx.x &amp; 0x1f];´</span><span class="Statement">)</span>
+<span class="Constant">      </span><span class="Type">@CALL_BUTTERFLY_REDUCTION(</span><span class="Special">$1</span><span class="Type">)</span>
+<span class="Constant">      if </span><span class="Special">(</span>threadIdx.x%32==0<span class="Special">)</span><span class="Constant"> {</span><span class="Special">$2</span><span class="Constant">}}}´</span><span class="Identifier">)</span><span class="Constant"> </span><span class="Comment">@dnl° whole 1024 Threads (in x index only) reduction across the block on $1, executing $2 at the end in the first thread of the block.</span>
+<span class="Constant">__global__ void  kernel_v_3_gets_y_min_y_k_and_f_n_gets_abs_bracketo_y_min_y_i_bracketc_sqr</span><span class="Special">(</span>
+    float* __restrict__ v_3, float* __restrict__ y, float* __restrict__ y_k,
+    float* __restrict__ f_n_part_sums, float* __restrict__ f_n,
+    unsigned int* __restrict__ count<span class="Special">)</span><span class="Constant"> {</span>
+<span class="Constant">  </span><span class="Identifier">@define(</span><span class="Constant">`@DEF_conv_reduce´</span>, <span class="Constant">`int index = blockIdx.x * blockDim.x + threadIdx.x;</span>
+<span class="Constant">  float diff;</span>
+<span class="Constant">  float value;</span>
+<span class="Constant">  __shared__ boolean isLastBlockDone;</span>
+<span class="Constant">  __shared__ float part_Sums[32];</span>
+<span class="Constant">  </span><span class="Type">@DEF_BLOCK_TOO_HIGH_THREADS_XY°</span>
+<span class="Constant">    diff = 0;</span>
+<span class="Constant">  else {</span>
+<span class="Constant">    </span><span class="Special">$1</span>
+<span class="Constant">  }</span>
+<span class="Constant">  </span><span class="Type">@CALL_BUTTERFLY_BLOCK_REDUCTION(</span><span class="Constant">`diff´</span><span class="Identifier">, </span><span class="Constant">`</span><span class="Special">$2</span><span class="Constant">[blockIdx.x] = diff;</span>
+<span class="Constant">    __threadfence</span><span class="Special">()</span><span class="Constant">;</span>
+<span class="Constant">    unsigned int value = atomicInc</span><span class="Special">(</span>count, gridDim.x<span class="Special">)</span><span class="Constant">;</span>
+<span class="Constant">    isLastBlockDone = </span><span class="Special">(</span>value == <span class="Special">(</span>gridDim.x - 1<span class="Special">))</span><span class="Constant">;´</span><span class="Type">)</span><span class="Constant"> </span><span class="Comment">@dnl° use that reduction!</span>
+<span class="Constant">  __syncthreads</span><span class="Special">()</span><span class="Constant">;</span>
+<span class="Constant">  if </span><span class="Special">(</span>isLastBlockDone<span class="Special">)</span><span class="Constant"> {</span>
+<span class="Constant">    if </span><span class="Special">(</span>gridDim.x &gt;  blockDim.x<span class="Special">)</span><span class="Constant"> {</span>
+<span class="Constant">      value = 0;</span>
+
+      for (int x=0; (gridDim.x % blockDim.x) == 0 ? x &lt; (gridDim.x / blockDim.x) : x &lt;= (gridDim.x / blockDim.x); x++)
+        value += (gridDim.x % blockDim.x) == 0 || threadIdx.x * blockDim.x &lt; gridDim.x ? $2[threadIdx.x * blockDim.x] : 0;
+    }
+    <span class="Type">@CALL_BUTTERFLY_BLOCK_REDUCTION(</span><span class="Identifier">value, </span><span class="Constant">`*</span><span class="Special">$3</span><span class="Constant"> = value;</span>
+<span class="Constant">    *count = 0;´</span><span class="Type">)</span> <span class="Comment">@dnl° reduction across the partial sums</span>
+  }´)
+  <span class="Type">@DEF_conv_reduce(</span><span class="Constant">`diff = y[index] - y_k[index];</span>
+<span class="Constant">    v_3[index] = diff;´</span><span class="Identifier">, </span><span class="Constant">`f_n_part_sums´</span><span class="Identifier">, </span><span class="Constant">`f_n´</span><span class="Type">)</span>
+}
+
+__global__ void kernel_nabla_tilde_Gets_nabla_capped_with_rule( float* __restrict__ vec_nabla_tilde_f, float* __restrict__ vec_nabla_f, float* __restrict__ vec_X) {
+  <span class="Type">@DEF_BLOCK_TOO_HIGH_THREADS_XY°</span>
+    return;
+  size_t i = blockIdx.x * blockDim.x + threadIdx.x;
+  vec_nabla_tilde_f[i] = (0 &lt; vec_nabla_f[i] &amp;&amp; 0 == vec_X[i]) ? 0 : vec_nabla_f[i];
+}
+
+__device__ <span class="Type">@DEF_FFT_PRECISION(</span><span class="Constant">`R´</span><span class="Type">)</span> load_f_p_X(void* __restrict__ dataIn, size_t offset, void* __restrict__ callerInfo, void* __restrict__ shared_Ptr) {
+  <span class="Identifier">@define(</span><span class="Constant">`@CALL_SPLIT_concatVar´</span>, <span class="Constant">`int xPos = </span><span class="Special">(</span>offset / <span class="Type">@DEF_concatVarSize°</span><span class="Special">)</span><span class="Constant"> &amp; </span><span class="Type">@DEF_concatVarSize°</span><span class="Constant">;</span>
+<span class="Constant">  int yPos = offset &amp; </span><span class="Type">@DEF_concatVarSize°</span><span class="Constant">;</span>
+<span class="Constant">  int patchNum = offset / </span><span class="Type">@DEF_concatVarSize°</span><span class="Constant"> / </span><span class="Type">@DEF_concatVarSize°</span><span class="Constant">;´</span><span class="Identifier">)</span>
+  <span class="Identifier">@define(</span><span class="Constant">`@DEF_xPatchOffset´</span>, <span class="Statement">@eval(</span><span class="Special">((</span><span class="Type">@DEF_storedSizeX°</span> ** 2<span class="Special">)</span> * <span class="Special">(</span><span class="Type">@DEF_NUM_PATCHES_Y°</span> + 1<span class="Special">))</span> / 2<span class="Statement">)</span><span class="Identifier">)</span>
+  <span class="Identifier">@define(</span><span class="Constant">`@DEF_yPatchOffset´</span>, <span class="Statement">@eval(</span><span class="Type">@DEF_storedSizeX°</span> / 2<span class="Statement">)</span><span class="Identifier">)</span>
+  <span class="Identifier">@define(</span><span class="Constant">`@CALL_RESTRICT_WITH_PADDING´</span>, <span class="Constant">`</span><span class="Type">@CALL_SPLIT_concatVar°</span>
+<span class="Constant">  </span><span class="Statement">@ifelse(</span><span class="Constant">`F´</span>, <span class="Constant">`</span><span class="Special">$1</span><span class="Constant">´</span>, <span class="Constant">`int xPosStored, yPosStored;</span>
+<span class="Constant">  if </span><span class="Special">(</span>xPos &lt;= <span class="Type">@DEF_SIZE_HALF_F°</span><span class="Special">)</span><span class="Constant"> { </span><span class="Comment">@dnl° lower valid end</span>
+<span class="Constant">    xPosStored = xPos + </span><span class="Type">@DEF_SIZE_HALF_F°</span><span class="Constant">;</span>
+<span class="Constant">  } else if </span><span class="Special">(</span><span class="Type">@DEF_FFT_SIZE°</span> - <span class="Type">@DEF_SIZE_HALF_F°</span> &lt;= xPos<span class="Special">)</span><span class="Constant"> { </span><span class="Comment">@dnl° upper valid end</span>
+<span class="Constant">    xPosStored = xPos + </span><span class="Type">@DEF_SIZE_HALF_F°</span><span class="Constant"> - </span><span class="Type">@DEF_FFT_SIZE°</span><span class="Constant">;</span>
+<span class="Constant">  } else {</span>
+<span class="Constant">    </span><span class="Special">$2</span>
+<span class="Constant">  }</span>
+<span class="Constant">  if </span><span class="Special">(</span>yPos &lt;= <span class="Type">@DEF_SIZE_HALF_F°</span><span class="Special">)</span><span class="Constant"> {  </span><span class="Comment">@dnl° lower valid end</span>
+<span class="Constant">    yPosStored = yPos + </span><span class="Type">@DEF_SIZE_HALF_F°</span><span class="Constant">;</span>
+<span class="Constant">  } else if </span><span class="Special">(</span><span class="Type">@DEF_FFT_SIZE°</span> - <span class="Type">@DEF_SIZE_HALF_F°</span> &lt;= yPos<span class="Special">)</span><span class="Constant"> { </span><span class="Comment">@dnl° upper valid end</span>
+<span class="Constant">    yPosStored = yPos + </span><span class="Type">@DEF_SIZE_HALF_F°</span><span class="Constant"> - </span><span class="Type">@DEF_FFT_SIZE°</span><span class="Constant">;</span>
+<span class="Constant">  } else {</span>
+<span class="Constant">    </span><span class="Special">$2</span>
+<span class="Constant">  }´</span>, <span class="Constant">`int zero_space[4]; </span><span class="Comment">@dnl° 0 &lt;= x &lt; 1 &amp;&amp; 2 &lt;= y &lt; 3</span>
+<span class="Constant">  int xPatch = patchNum / </span><span class="Type">@DEF_NUM_PATCHES_Y°</span><span class="Constant">;</span>
+<span class="Constant">  int yPatch = patchNum - xPatch * </span><span class="Type">@DEF_NUM_PATCHES_Y°</span><span class="Constant">;</span>
+<span class="Constant">  if</span><span class="Special">(</span>0 == xPatch<span class="Special">)</span><span class="Constant"> { </span><span class="Comment">@dnl° x = 0 border</span>
+<span class="Constant">    zero_space[0] = </span><span class="Statement">@ifelse(</span><span class="Constant">`X´</span>, <span class="Constant">`</span><span class="Special">$1</span><span class="Constant">´</span>, <span class="Constant">`</span><span class="Statement">@eval(</span><span class="Type">@DEF_storedSizeX°</span> / 2<span class="Statement">)</span><span class="Constant">´</span>, <span class="Constant">`Y´</span>, <span class="Constant">`</span><span class="Special">$1</span><span class="Constant">´</span>, <span class="Constant">`</span><span class="Statement">@eval(</span><span class="Type">@DEF_SIZE_HALF_F°</span> + <span class="Special">(</span><span class="Type">@DEF_storedSizeX°</span> / 2<span class="Special">)</span><span class="Statement">)</span><span class="Constant">´</span><span class="Statement">)</span><span class="Constant">;</span>
+<span class="Constant">    zero_space[1] = </span><span class="Statement">@ifelse(</span><span class="Constant">`s´</span>, <span class="Constant">`</span><span class="Special">$2</span><span class="Constant">´</span>, <span class="Constant">`</span><span class="Type">@DEF_FFT_SIZE°</span><span class="Constant">´</span>, <span class="Constant">`l´</span>, <span class="Constant">`</span><span class="Special">$2</span><span class="Constant">´</span>, <span class="Constant">`</span><span class="Statement">@eval(</span><span class="Type">@DEF_FFT_SIZE°</span> - <span class="Type">@DEF_SIZE_HALF_F°</span><span class="Statement">)</span><span class="Constant">´</span><span class="Statement">)</span><span class="Constant">;</span>
+<span class="Constant">  } else if </span><span class="Special">(</span><span class="Type">@DEF_NUM_PATCHES_Y°</span> - 1 == xPatch<span class="Special">)</span><span class="Constant"> { </span><span class="Comment">@dnl° x = MAX border</span>
+<span class="Constant">    zero_space[0] = </span><span class="Statement">@ifelse(</span><span class="Constant">`s´</span>, <span class="Constant">`</span><span class="Special">$2</span><span class="Constant">´</span>, <span class="Constant">`0´</span>, <span class="Constant">`l´</span>, <span class="Constant">`</span><span class="Special">$2</span><span class="Constant">´</span>, <span class="Constant">`</span><span class="Type">@DEF_SIZE_HALF_F°</span><span class="Constant">´</span><span class="Statement">)</span><span class="Constant">;</span>
+<span class="Constant">    zero_space[1] = </span><span class="Statement">@ifelse(</span><span class="Constant">`s´</span>, <span class="Constant">`</span><span class="Special">$2</span><span class="Constant">´</span>, <span class="Constant">`</span><span class="Type">@DEF_FFT_SIZE°</span><span class="Constant">´</span>, <span class="Constant">`l´</span>, <span class="Constant">`</span><span class="Special">$2</span><span class="Constant">´</span>, <span class="Constant">`</span><span class="Statement">@eval(</span><span class="Type">@DEF_FFT_SIZE°</span> - <span class="Type">@DEF_SIZE_HALF_F°</span><span class="Statement">)</span><span class="Constant">´</span><span class="Statement">)</span><span class="Constant">;</span>
+<span class="Constant">  } else { </span><span class="Comment">@dnl°  no x border</span>
+<span class="Constant">    zero_space[0] = </span><span class="Statement">@ifelse(</span><span class="Constant">`s´</span>, <span class="Constant">`</span><span class="Special">$2</span><span class="Constant">´</span>, <span class="Constant">`0´</span>, <span class="Constant">`l´</span>, <span class="Constant">`</span><span class="Special">$2</span><span class="Constant">´</span>, <span class="Constant">`</span><span class="Type">@DEF_SIZE_HALF_F°</span><span class="Constant">´</span><span class="Statement">)</span><span class="Constant">;</span>
+<span class="Constant">    zero_space[1] = </span><span class="Statement">@ifelse(</span><span class="Constant">`X´</span>, <span class="Constant">`</span><span class="Special">$1</span><span class="Constant">´</span>, <span class="Constant">`</span><span class="Statement">@eval(</span><span class="Type">@DEF_FFT_SIZE°</span>- <span class="Special">(</span><span class="Type">@DEF_storedSizeX°</span> / 2<span class="Special">)</span><span class="Statement">)</span><span class="Constant">´</span>, <span class="Constant">`Y´</span>, <span class="Constant">`</span><span class="Special">$1</span><span class="Constant">´</span>, <span class="Constant">`</span><span class="Statement">@eval(</span><span class="Type">@DEF_FFT_SIZE°</span> - <span class="Type">@DEF_SIZE_HALF_F°</span> - <span class="Special">(</span><span class="Type">@DEF_storedSizeX°</span> / 2<span class="Special">)</span><span class="Statement">)</span><span class="Constant">´</span><span class="Statement">)</span><span class="Constant">;</span>
+<span class="Constant">  }</span>
+
+  if (0 == yPatch) { <span class="Comment">@dnl° y = 0 border</span>
+    zero_space[2] = <span class="Statement">@ifelse(</span><span class="Constant">`X´</span>, <span class="Constant">`</span><span class="Special">$1</span><span class="Constant">´</span>, <span class="Constant">`</span><span class="Statement">@eval(</span><span class="Type">@DEF_storedSizeX°</span> / 2<span class="Statement">)</span><span class="Constant">´</span>, <span class="Constant">`Y´</span>, <span class="Constant">`</span><span class="Special">$1</span><span class="Constant">´</span>, <span class="Constant">`</span><span class="Statement">@eval(</span><span class="Type">@DEF_SIZE_HALF_F°</span> + <span class="Special">(</span><span class="Type">@DEF_storedSizeX°</span> / 2<span class="Special">)</span><span class="Statement">)</span><span class="Constant">´</span><span class="Statement">)</span>;
+    zero_space[3] = <span class="Statement">@ifelse(</span><span class="Constant">`s´</span>, <span class="Constant">`</span><span class="Special">$2</span><span class="Constant">´</span>, <span class="Constant">`</span><span class="Type">@DEF_FFT_SIZE°</span><span class="Constant">´</span>, <span class="Constant">`l´</span>, <span class="Constant">`</span><span class="Special">$2</span><span class="Constant">´</span>, <span class="Constant">`</span><span class="Statement">@eval(</span><span class="Type">@DEF_FFT_SIZE°</span> - <span class="Type">@DEF_SIZE_HALF_F°</span><span class="Statement">)</span><span class="Constant">´</span><span class="Statement">)</span>;
+  } else if (<span class="Type">@DEF_NUM_PATCHES_X°</span> - 1 == yPatch) { <span class="Comment">@dnl° y = MAX border</span>
+    zero_space[2] = <span class="Statement">@ifelse(</span><span class="Constant">`s´</span>, <span class="Constant">`</span><span class="Special">$2</span><span class="Constant">´</span>, <span class="Constant">`0´</span>, <span class="Constant">`l´</span>, <span class="Constant">`</span><span class="Special">$2</span><span class="Constant">´</span>, <span class="Constant">`</span><span class="Type">@DEF_SIZE_HALF_F°</span><span class="Constant">´</span><span class="Statement">)</span>;
+    zero_space[3] = <span class="Statement">@ifelse(</span><span class="Constant">`s´</span>, <span class="Constant">`</span><span class="Special">$2</span><span class="Constant">´</span>, <span class="Constant">`</span><span class="Type">@DEF_FFT_SIZE°</span><span class="Constant">´</span>, <span class="Constant">`l´</span>, <span class="Constant">`</span><span class="Special">$2</span><span class="Constant">´</span>, <span class="Constant">`</span><span class="Statement">@eval(</span><span class="Type">@DEF_FFT_SIZE°</span> - <span class="Type">@DEF_SIZE_HALF_F°</span><span class="Statement">)</span><span class="Constant">´</span><span class="Statement">)</span>;
+  } else { <span class="Comment">@dnl° no  y border</span>
+    zero_space[2] = <span class="Statement">@ifelse(</span><span class="Constant">`s´</span>, <span class="Constant">`</span><span class="Special">$2</span><span class="Constant">´</span>, <span class="Constant">`0´</span>, <span class="Constant">`l´</span>, <span class="Constant">`</span><span class="Special">$2</span><span class="Constant">´</span>, <span class="Constant">`</span><span class="Type">@DEF_SIZE_HALF_F°</span><span class="Constant">´</span><span class="Statement">)</span>;
+    zero_space[3] = <span class="Statement">@ifelse(</span><span class="Constant">`X´</span>, <span class="Constant">`</span><span class="Special">$1</span><span class="Constant">´</span>, <span class="Constant">`</span><span class="Statement">@eval(</span><span class="Type">@DEF_FFT_SIZE°</span>- <span class="Special">(</span><span class="Type">@DEF_storedSizeX°</span> / 2<span class="Special">)</span><span class="Statement">)</span><span class="Constant">´</span>, <span class="Constant">`Y´</span>, <span class="Constant">`</span><span class="Special">$1</span><span class="Constant">´</span>, <span class="Constant">`</span><span class="Statement">@eval(</span><span class="Type">@DEF_FFT_SIZE°</span> - <span class="Type">@DEF_SIZE_HALF_F°</span> - <span class="Special">(</span><span class="Type">@DEF_storedSizeX°</span> / 2<span class="Special">)</span><span class="Statement">)</span><span class="Constant">´</span><span class="Statement">)</span>;
+  }
+
+  int patchOffset = <span class="Type">@DEF_xPatchOffset°</span> * xPatch + <span class="Type">@DEF_yPatchOffset°</span> * yPatch;
+  if (zero_space[0] &lt;= xPos &amp;&amp; xPos &lt; zero_space[1] &amp;&amp; zero_space[2] &lt;= yPos &amp;&amp; yPos &lt; zero_space[3]) {
+    int yPosStored = yPos - <span class="Type">@DEF_SIZE_HALF_F°</span>;
+    int xPosStored = xPos - <span class="Type">@DEF_SIZE_HALF_F°</span>;
+    $3
+  }
+  ´)´) <span class="Comment">@dnl° args:</span>
+<span class="Comment">@dnl° $1 = 'F',</span>
+<span class="Comment">@dnl°   uses:</span>
+<span class="Comment">@dnl°     $2 = &lt;statement('s) to execute in case this spot requires padding, it will be evaluated once in the x-coordinate checking, and once for the y-coordinate checking, in case it happens to be out of bounds in both.&gt;</span>
+<span class="Comment">@dnl°   sets (among others):</span>
+<span class="Comment">@dnl°     xPos,yPos = &lt;position in the fft, zero-indexed&gt;,</span>
+<span class="Comment">@dnl°     xPosStored,yPosStored = &lt;position in memory, zero indexed&gt;</span>
+<span class="Comment">@dnl°     patchNum = &lt;patch number, zero indexed&gt;</span>
+<span class="Comment">@dnl° |$1 = 'Y',</span>
+<span class="Comment">@dnl°   uses:</span>
+<span class="Comment">@dnl°     $2 =</span>
+<span class="Comment">@dnl°       'l' &lt;to use the padding for loading a 'Y'&gt;</span>
+<span class="Comment">@dnl°       |'s' &lt;to use the padding for saving a 'Y'&gt;,</span>
+<span class="Comment">@dnl°     $3 = &lt;statement(s) to execute in case it is a valid position&gt;</span>
+<span class="Comment">@dnl° |$1 = 'X',</span>
+<span class="Comment">@dnl°   uses:</span>
+<span class="Comment">@dnl°     $2 =</span>
+<span class="Comment">@dnl°       'l' &lt;to use the padding for loading a 'X'&gt;</span>
+<span class="Comment">@dnl°       |'s' &lt;to use the padding for saving a 'X'&gt;,</span>
+<span class="Comment">@dnl°     $3 = &lt;statement(s) to execute in case it is a valid position&gt;</span>
+<span class="Type">@CALL_RESTRICT_WITH_PADDING(</span><span class="Constant">`F´</span><span class="Identifier">, </span><span class="Constant">`return 0;´</span><span class="Type">)</span>
+  return ((<span class="Type">@DEF_FFT_PRECISION(</span><span class="Constant">`R´</span><span class="Type">)</span>*) dataIn)[(<span class="Type">@DEF_SIZE_F°</span> * <span class="Type">@DEF_SIZE_F°</span>) *  patchNum + <span class="Type">@DEF_SIZE_F°</span> * xPosStored + yPosStored] * <span class="Type">@CALL_GEWICHTUNG(</span><span class="Constant">`xPos - </span><span class="Type">@DEF_SIZE_HALF_F°</span><span class="Constant"> - </span><span class="Special">(</span><span class="Type">@DEF_storedSizeX°</span>/2<span class="Special">)</span><span class="Constant">´</span><span class="Identifier">, </span><span class="Constant">`yPos - </span><span class="Type">@DEF_SIZE_HALF_F°</span><span class="Constant"> - </span><span class="Special">(</span><span class="Type">@DEF_storedSizeX°</span>/2<span class="Special">)</span><span class="Constant">´</span><span class="Type">)</span>;
+}
+
+__device__ void store_f_T_p_conj_fft_X(void* __restrict__ dataOut, size_t offset, <span class="Type">@DEF_FFT_PRECISION(</span><span class="Constant">`C´</span><span class="Type">)</span> element, void* __restrict__ callerInfo, void* __restrict__ sharedPointer) {
+  ((<span class="Type">@DEF_FFT_PRECISION(</span><span class="Constant">`C´</span><span class="Type">)</span>*) (dataOut))[offset] = <span class="Statement">@ifelse(</span><span class="Constant">`float´</span>, <span class="Type">@DEF_FFT_PRECISION_TYPE°</span>, <span class="Constant">`cuConjf´</span>, <span class="Constant">`double´</span>, <span class="Type">@DEF_FFT_PRECISION_TYPE°</span>, <span class="Constant">`cuConj´</span><span class="Statement">)</span>(element); <span class="Comment">@dnl° </span><span class="Todo">TODO:</span><span class="Comment"> insert right cmmand/</span>
+}
+
+__device__ <span class="Type">@DEF_FFT_PRECISION(</span><span class="Constant">`C´</span><span class="Type">)</span> load_F_X_m_F_X(void* __restrict__ dataIn, size_t offset, void* __restrict__ callerInfo, void* __restrict__ sharedPointer) {
+  return <span class="Statement">@ifelse(</span><span class="Constant">`float´</span>, <span class="Type">@DEF_FFT_PRECISION_TYPE°</span>, <span class="Constant">`cuCmulf´</span><span class="Statement">)</span>(((<span class="Type">@DEF_FFT_PRECISION(</span><span class="Constant">`C´</span><span class="Type">)</span>*) (dataIn))[offset], ((<span class="Type">@DEF_FFT_PRECISION(</span><span class="Constant">`C´</span><span class="Type">)</span>*) (callerInfo))[offset]);  <span class="Comment">@dnl° </span><span class="Todo">TODO:</span><span class="Comment"> include double precision as an option for the commplex multipliction.</span>
+}
+
+__device__ void store_v_4_F_T_v_4_p_weight_half_v_1_X(void* __restrict__ dataOut, size_t offset, <span class="Type">@DEF_FFT_PRECISION(</span><span class="Constant">`R´</span><span class="Type">)</span> element, void* __restrict__ callerInfo, void* __restrict__ sharedPointer) {
+  <span class="Type">@CALL_RESTRICT_WITH_PADDING(</span><span class="Constant">`Y´</span><span class="Identifier">, </span><span class="Constant">`s´</span><span class="Identifier">, </span><span class="Constant">`element *= .5f * </span><span class="Type">@CALL_GEWICHTUNG(</span><span class="Constant">`xPosStored - </span><span class="Special">(</span><span class="Type">@DEF_storedSizeX°</span> /2<span class="Special">)</span><span class="Constant">´</span><span class="Identifier">, </span><span class="Constant">`yPosStored - </span><span class="Special">(</span><span class="Type">@DEF_storedSizeX°</span> /2<span class="Special">)</span><span class="Constant">´</span><span class="Type">)</span><span class="Constant">;</span>
+<span class="Constant">  atomicAdd</span><span class="Special">(</span>&amp;<span class="Special">((</span><span class="Type">@DEF_FFT_PRECISION(</span><span class="Constant">`R´</span><span class="Type">)</span>*<span class="Special">)</span> <span class="Special">(</span>dataOut<span class="Special">))</span>[patchOffset + xPosStored * <span class="Type">@DEF_storedSizeX°</span> + yPosStored], element<span class="Special">)</span><span class="Constant">;</span>
+<span class="Constant">´</span><span class="Type">)</span>
+}
+
+__device__ <span class="Type">@DEF_FFT_PRECISION(</span><span class="Constant">`R´</span><span class="Type">)</span> load_x_p_F(void* __restrict__ dataIn, size_t offset, void* __restrict__ callerInfo, void* __restrict__ sharedPtr) {
+  <span class="Type">@DEF_FFT_PRECISION(</span><span class="Constant">`R´</span><span class="Type">)</span> ret;
+  <span class="Type">@CALL_RESTRICT_WITH_PADDING(</span><span class="Constant">`X´</span><span class="Identifier">, </span><span class="Constant">`l´</span><span class="Identifier">, </span><span class="Constant">`ret = </span><span class="Special">((</span><span class="Type">@DEF_FFT_PRECISION(</span><span class="Constant">`R´</span><span class="Type">)</span>*<span class="Special">)</span> dataIn<span class="Special">)</span><span class="Constant">[patchOffset + xPosStored * </span><span class="Type">@DEF_storedSizeX°</span><span class="Constant"> + yPosStored];</span>
+<span class="Constant">    ret *= </span><span class="Type">@CALL_GEWICHTUNG(</span><span class="Constant">`xPosStored´</span><span class="Identifier">, </span><span class="Constant">`yPosStored´</span><span class="Type">)</span><span class="Constant">;</span>
+<span class="Constant">´</span><span class="Type">)</span> else
+    ret = 0;
+  return ret;
+}
+
+__device__ <span class="Type">@DEF_FFT_PRECISION(</span><span class="Constant">`R´</span><span class="Type">)</span> load_f_X_1_l_F(void* __restrict__ dataIn, size_t offset, void* __restrict__ callerInfo, void* __restrict__ sharedPtr) {
+  <span class="Type">@CALL_RESTRICT_WITH_PADDING(</span><span class="Constant">`F´</span><span class="Identifier">, </span><span class="Constant">`return 0;´</span><span class="Type">)</span>
+  return ((<span class="Type">@DEF_FFT_PRECISION(</span><span class="Constant">`R´</span><span class="Type">)</span>*) dataIn)[(<span class="Type">@DEF_SIZE_F°</span> * <span class="Type">@DEF_SIZE_F°</span>) * patchNum + <span class="Type">@DEF_SIZE_F°</span> * xPosStored + yPosStored];
+}
+
+__device__ <span class="Type">@DEF_FFT_PRECISION(</span><span class="Constant">`R´</span><span class="Type">)</span> load_v_3_X_T_F(void* __restrict__ dataIn, size_t offset, void* __restrict__ callerInfo, void* __restrict__ sharedPtr) {
+  <span class="Type">@CALL_RESTRICT_WITH_PADDING(</span><span class="Constant">`Y´</span><span class="Identifier">, </span><span class="Constant">`l´</span><span class="Identifier">, </span><span class="Constant">`return </span><span class="Special">((</span><span class="Type">@DEF_FFT_PRECISION(</span><span class="Constant">`R´</span><span class="Type">)</span>*<span class="Special">)</span> <span class="Special">(</span>dataIn<span class="Special">))</span><span class="Constant">[patchOffset + xPosStored * </span><span class="Type">@DEF_storedSizeX°</span><span class="Constant"> + yPosStored];´</span><span class="Type">)</span> else
+    return 0;
+}
+
+__device__ void store_f_X_y_p_v_1_F(void* __restrict__ dataOut, size_t offset, <span class="Type">@DEF_FFT_PRECISION(</span><span class="Constant">`R´</span><span class="Type">)</span> element, void* __restrict__ callerInfo, void* __restrict__ sharedPointer) {
+  <span class="Type">@CALL_RESTRICT_WITH_PADDING(</span><span class="Constant">`Y´</span><span class="Identifier">, </span><span class="Constant">`s´</span><span class="Identifier">, </span><span class="Constant">`atomicAdd</span><span class="Special">(</span>&amp;<span class="Special">((</span><span class="Type">@DEF_FFT_PRECISION(</span><span class="Constant">`R´</span><span class="Type">)</span>*<span class="Special">)</span> <span class="Special">(</span>dataOut<span class="Special">))</span>[patchOffset + xPosStored * <span class="Type">@DEF_storedSizeX°</span> + yPosStored], element * <span class="Special">((</span>float<span class="Special">)</span> <span class="Special">(</span>1. / <span class="Special">(</span><span class="Type">@DEF_FFT_SIZE°</span> * <span class="Type">@DEF_FFT_SIZE°</span><span class="Special">))))</span><span class="Constant">;´</span><span class="Type">)</span>
+}
+
+__device__ void store_f_X_fft_m_x_F(void* __restrict__ dataOut, size_t offset, <span class="Type">@DEF_FFT_PRECISION(</span><span class="Constant">`C´</span><span class="Type">)</span> element, void* __restrict__ callerInfo, void* __restrict__ sharedPointer) {
+  ((<span class="Type">@DEF_FFT_PRECISION(</span><span class="Constant">`C´</span><span class="Type">)</span>*) (dataOut))[offset] = cuCmulf(((<span class="Type">@DEF_FFT_PRECISION(</span><span class="Constant">`C´</span><span class="Type">)</span>*) (dataOut))[offset], ((<span class="Type">@DEF_FFT_PRECISION(</span><span class="Constant">`C´</span><span class="Type">)</span>*) (callerInfo))[offset]);
+}
+
+__device__ void store_f_X_T_fft_m_x_F(void* __restrict__ dataOut, size_t offset, <span class="Type">@DEF_FFT_PRECISION(</span><span class="Constant">`C´</span><span class="Type">)</span> element, void* __restrict__ callerInfo, void* __restrict__ sharedPointer) {
+  ((<span class="Type">@DEF_FFT_PRECISION(</span><span class="Constant">`C´</span><span class="Type">)</span>*) (dataOut))[offset] = cuCmulf(((<span class="Type">@DEF_FFT_PRECISION(</span><span class="Constant">`C´</span><span class="Type">)</span>*) (dataOut))[offset], cuConjf(((<span class="Type">@DEF_FFT_PRECISION(</span><span class="Constant">`C´</span><span class="Type">)</span>*) (callerInfo))[offset]));
+}
+<span class="Identifier">@define(</span><span class="Constant">`@DEF_STORE_REDUCE_CALL´</span>, <span class="Constant">`</span><span class="Statement">@ifelse(</span><span class="Constant">`11´</span>, <span class="Constant">`</span><span class="Special">$1</span><span class="Constant">´</span>, <span class="Constant">`store_f_X_T_1_nabla_tilde_f_uneven_b_F´</span>, <span class="Constant">`12´</span>, <span class="Constant">`</span><span class="Special">$1</span><span class="Constant">´</span>, <span class="Constant">`store_f_X_T_1_nabla_tilde_f_even_b_F´</span>, <span class="Constant">`21´</span>, <span class="Constant">`</span><span class="Special">$1</span><span class="Constant">´</span>, <span class="Constant">`store_f_X_T_2_delta_tilde_f_even_b_F´</span>, <span class="Constant">`22´</span>, <span class="Constant">`</span><span class="Special">$1</span><span class="Constant">´</span>, <span class="Constant">`store_f_X_T_2_delta_tilde_f_uneven_b_F´</span><span class="Statement">)</span><span class="Constant">´</span><span class="Identifier">)</span>
+<span class="Identifier">@define(</span><span class="Constant">`@DEF_STORE_REDUCE_DEF´</span>, <span class="Constant">`__device__ void </span><span class="Type">@DEF_STORE_REDUCE_CALL(</span><span class="Constant">`</span><span class="Special">$1$2</span><span class="Constant">´</span><span class="Type">)</span><span class="Constant"> </span><span class="Special">(</span>void* __restrict__ dataOut, size_t offset, <span class="Type">@DEF_FFT_PRECISION(</span><span class="Constant">`R´</span><span class="Type">)</span> element, void* __restrict__ callerInfo, void* __restrict__ sharedPointer<span class="Special">)</span><span class="Constant"> {</span>
+<span class="Constant">  struct store_f_X_T_1_informations </span><span class="Special">(</span>*inform_struct<span class="Special">)</span><span class="Constant"> =</span>
+<span class="Constant">      </span><span class="Special">(</span>store_f_X_T_1_informations*<span class="Special">)</span><span class="Constant"> </span><span class="Special">(</span>callerInfo<span class="Special">)</span><span class="Constant">;</span>
+<span class="Constant">  float nabla_tilde_f = 0;</span>
+<span class="Constant">  float value;</span>
+<span class="Constant">  float f;</span>
+<span class="Constant">  float *vec_f_o = inform_struct-&gt;vec_f_o;</span>
+<span class="Constant">  float *vec_f = vec_f_o;</span>
+<span class="Constant">  float *vec_nabla_tilde_f_o = inform_struct-&gt;vec_nabla_f_o;</span>
+<span class="Constant">  bool isF = true;</span>
+<span class="Constant">  </span><span class="Type">@CALL_RESTRICT_WITH_PADDING(</span><span class="Constant">`F´</span><span class="Identifier">, </span><span class="Constant">`value = 0;</span>
+<span class="Constant">    isF = false;</span>
+<span class="Constant">    goto sumItUp;´</span><span class="Type">)</span>
+<span class="Constant">  int index = </span><span class="Special">(</span><span class="Type">@DEF_SIZE_F°</span> * <span class="Type">@DEF_SIZE_F°</span><span class="Special">)</span><span class="Constant"> * patchNum + </span><span class="Type">@DEF_SIZE_F°</span><span class="Constant"> * xPosStored + yPosStored;</span>
+<span class="Constant">  </span><span class="Statement">@ifelse(</span><span class="Constant">`1´</span>, <span class="Constant">`</span><span class="Special">$1</span><span class="Constant">´</span>, <span class="Constant">`if </span><span class="Special">(</span>element &gt; 0 &amp;&amp;  0 == vec_f_o[index]<span class="Special">)</span>
+<span class="Constant">    nabla_tilde_f = 0;</span>
+<span class="Constant">  else</span>
+<span class="Constant">    nabla_tilde_f = </span><span class="Special">((</span>float<span class="Special">)</span> .5 / <span class="Special">(</span><span class="Type">@DEF_FFT_SIZE°</span> * <span class="Type">@DEF_FFT_SIZE°</span><span class="Special">))</span><span class="Constant"> * element,</span>
+
+  f = vec_f_o[index] - inform_struct-&gt;alpha * inform_struct-&gt;beta * nabla_tilde_f;
+  value = vec_nabla_tilde_f_o[index] * (vec_f_o[index] - vec_f[index]);´, `value = inform_struct-&gt;vec_nabla_f_o[index] * element * ((float) 1. / (<span class="Type">@DEF_FFT_SIZE°</span> *  <span class="Type">@DEF_FFT_SIZE°</span>));´)
+
+  sumItUp:
+
+  <span class="Type">@CALL_BUTTERFLY_BLOCK_REDUCTION(</span><span class="Constant">`value´</span><span class="Identifier">, </span><span class="Constant">`</span><span class="Statement">@ifelse(</span><span class="Constant">`1´</span>, <span class="Constant">`</span><span class="Special">$1</span><span class="Constant">´</span>, <span class="Constant">`inform_struct-&gt;nabla_f_o_scalar_prod_bracketo_x_o_minus_new_f_bracketc_part_sums_d´</span>, <span class="Constant">`inform_struct-&gt;nabla_f_scalar_prod_delta_f_part_sums´</span><span class="Statement">)</span><span class="Constant">[gridDim.x * gridDim.y * blockIdx.z + gridDim.x * blockDim.y + blockIdx.x] = value;</span>
+<span class="Constant">  inform_struct-&gt;block_num = gridDim.x * gridDim.y * gridDim.z;</span>
+<span class="Constant">    inform_struct-&gt;block_size = blockDim.x * blockDim.y * blockDim.z;´</span><span class="Identifier">, </span><span class="Constant">`s´</span><span class="Type">)</span>
+
+  value = <span class="Statement">@ifelse(</span><span class="Constant">`1´</span>, <span class="Constant">`</span><span class="Special">$1</span><span class="Constant">´</span>, <span class="Constant">`nabla_tilde_f * nabla_tilde_f;´</span>, <span class="Constant">`element * element * </span><span class="Special">((</span>float<span class="Special">)</span> 1. / <span class="Special">(</span><span class="Type">@DEF_FFT_SIZE°</span>l * <span class="Type">@DEF_FFT_SIZE°</span> * <span class="Type">@DEF_FFT_SIZE°</span> * <span class="Type">@DEF_FFT_SIZE°</span><span class="Special">))</span><span class="Constant">;´</span><span class="Statement">)</span>
+  <span class="Statement">@ifelse(</span><span class="Constant">`2´</span>, <span class="Constant">`</span><span class="Special">$2</span><span class="Constant">´</span>, <span class="Constant">`</span><span class="Type">@CALL_BUTTERFLY_BLOCK_REDUCTION(</span><span class="Constant">`value´</span><span class="Identifier">,  </span><span class="Constant">`</span><span class="Statement">@ifelse(</span><span class="Constant">`1´</span>, <span class="Constant">`</span><span class="Special">$1</span><span class="Constant">´</span>, <span class="Constant">`inform_struct-&gt;abs_vec_nabla_f_part_sums´</span>, <span class="Constant">`inform_struct-&gt;abs_vec_delta_f_part_sums´</span><span class="Statement">)</span><span class="Constant">[gridDim.x * gridDim.y * blockIdx.z + gridDim.x * blockIdx.y + blockIdx.x] = value;´</span><span class="Identifier">, </span><span class="Constant">`s´</span><span class="Type">)</span><span class="Constant">´</span><span class="Statement">)</span>
+
+  if (isF)
+    vec_f_o[index] = f;
+}´)
+
+<span class="Type">@DEF_STORE_REDUCE_DEF°</span>(1, 2)
+
+<span class="Type">@DEF_STORE_REDUCE_DEF°</span>(1, 1)
+
+<span class="Type">@DEF_STORE_REDUCE_DEF°</span>(2, 1)
+
+<span class="Type">@DEF_STORE_REDUCE_DEF°</span>(2, 2)
+
+__device__ <span class="Type">@DEF_FFT_PRECISION(</span><span class="Constant">`R´</span><span class="Type">)</span> load_x_p_X(void* __restrict__ dataIn, size_t offset, void* __restrict__ callerInfo, void* __restrict__ sharedPtr) {
+  <span class="Type">@DEF_FFT_PRECISION(</span><span class="Constant">`R´</span><span class="Type">)</span> ret;
+  <span class="Type">@CALL_RESTRICT_WITH_PADDING(</span><span class="Constant">`X´</span><span class="Identifier">, </span><span class="Constant">`l´</span><span class="Identifier">, </span><span class="Constant">`ret = </span><span class="Special">((</span><span class="Type">@DEF_FFT_PRECISION(</span><span class="Constant">`R´</span><span class="Type">)</span>*<span class="Special">)</span> dataIn<span class="Special">)</span><span class="Constant">[patchOffset + xPosStored * </span><span class="Type">@DEF_storedSizeX°</span><span class="Constant"> + yPosStored];</span>
+<span class="Constant">´</span><span class="Type">)</span> else
+    ret = 0;
+  return ret;
+}
+__device__ <span class="Type">@DEF_FFT_PRECISION(</span><span class="Constant">`C´</span><span class="Type">)</span> load_x_p_cmplx_mul_f_p(void* __restrict__ dataOut, size_t offset, <span class="Type">@DEF_FFT_PRECISION(</span><span class="Constant">`C´</span><span class="Type">)</span> element, void* __restrict__ callerInfo, void* __restrict__ sharedPointer) {
+  return ((<span class="Type">@DEF_FFT_PRECISION(</span><span class="Constant">`C´</span><span class="Type">)</span>*) (dataOut))[offset] = cuCmulf(((<span class="Type">@DEF_FFT_PRECISION(</span><span class="Constant">`C´</span><span class="Type">)</span>*) (dataOut))[offset], ((<span class="Type">@DEF_FFT_PRECISION(</span><span class="Constant">`C´</span><span class="Type">)</span>*) (callerInfo))[offset]);
+} <span class="Comment">@dnl° convert the parameters and rest from store to load.</span>
+
+__device__ void store_y_plus_y_X(void* __restrict__ dataOut, size_t offset, <span class="Type">@DEF_FFT_PRECISION(</span><span class="Constant">`R´</span><span class="Type">)</span> element, void* __restrict__ callerInfo, void* __restrict__ sharedPointer) {
+  <span class="Type">@CALL_RESTRICT_WITH_PADDING(</span><span class="Constant">`Y´</span><span class="Identifier">, </span><span class="Constant">`s´</span><span class="Identifier">, </span><span class="Constant">`atomicAdd</span><span class="Special">(</span>&amp;<span class="Special">((</span><span class="Type">@DEF_FFT_PRECISION(</span><span class="Constant">`R´</span><span class="Type">)</span>*<span class="Special">)</span> <span class="Special">(</span>dataOut<span class="Special">))</span>[patchOffset + xPosStored * <span class="Type">@DEF_storedSizeX°</span> + yPosStored], element * <span class="Special">((</span>float<span class="Special">)</span> <span class="Special">(</span>1. / <span class="Special">(</span><span class="Type">@DEF_FFT_SIZE°</span> * <span class="Type">@DEF_FFT_SIZE°</span><span class="Special">))))</span><span class="Constant">;´</span><span class="Type">)</span>
+}
+
+<span class="Comment">@dnl° that have been all the function definitions for the device side, except the not refactored, but to be coded, device side reduction/summation code for those reductions previously done in host code (to seriously reduce host&lt;.device traffic</span>
+<span class="Identifier">@define(</span><span class="Constant">`@COMPOUND´</span>, <span class="Constant">`</span><span class="Statement">@ifelse(</span><span class="Constant">`L´</span>, <span class="Special">$1</span>, <span class="Constant">`load´</span>, <span class="Constant">`S´</span>, <span class="Constant">`</span><span class="Special">$1</span><span class="Constant">´</span>, <span class="Constant">`store´</span><span class="Statement">)</span><span class="Constant">_</span><span class="Special">$3</span><span class="Constant">´</span><span class="Identifier">)</span>
+<span class="Identifier">@define(</span><span class="Constant">`@CALL_ALLOC_CB´</span>, <span class="Constant">`__device__ cufftCallback</span><span class="Statement">@ifelse(</span><span class="Constant">`L´</span>, <span class="Constant">`</span><span class="Special">$1</span><span class="Constant">´</span>, <span class="Constant">`Load´</span>, <span class="Constant">`S´</span>, <span class="Constant">`</span><span class="Special">$1</span><span class="Constant">´</span>, <span class="Constant">`Store´</span><span class="Statement">)</span><span class="Special">$2</span><span class="Constant"> _d_</span><span class="Type">@COMPOUND°</span><span class="Special">(</span><span class="Special">$@</span><span class="Special">)</span><span class="Constant"> = </span><span class="Type">@COMPOUND(</span><span class="Special">$@</span><span class="Type">)</span><span class="Constant">;</span>
+<span class="Constant">cufftCallback</span><span class="Statement">@ifelse(</span><span class="Constant">`L´</span>, <span class="Constant">`</span><span class="Special">$1</span><span class="Constant">´</span>, <span class="Constant">`Load´</span>, <span class="Constant">`S´</span>, <span class="Constant">`</span><span class="Special">$1</span><span class="Constant">´</span>, <span class="Constant">`Store´</span><span class="Statement">)</span><span class="Special">$2</span><span class="Constant"> _h_</span><span class="Type">@COMPOUND(</span><span class="Special">$@</span><span class="Type">)</span><span class="Constant">;</span><span class="Statement">@divert(</span>1<span class="Statement">)</span><span class="Constant"> cudaMemcpyFromSymbol</span><span class="Special">(</span>&amp;_h_<span class="Type">@COMPOUND(</span><span class="Special">$@</span><span class="Type">)</span>, _d_<span class="Type">@COMPOUND(</span><span class="Special">$@</span><span class="Type">)</span>, sizeof<span class="Special">(</span>_h_<span class="Type">@COMPOUND(</span><span class="Special">$@</span><span class="Type">)</span><span class="Special">))</span><span class="Constant">;</span>
+<span class="Statement">@divert(</span>0<span class="Statement">)</span><span class="Constant">´</span><span class="Identifier">)</span> <span class="Type">@stop°</span> ´)´)
+<span class="Comment">@dnl° </span><span class="Todo">TODO:</span><span class="Comment"> insert all the @CALL_ALLOC_CB</span>
+<span class="Type">@CALL_ALLOC_CB(</span><span class="Constant">`L´</span><span class="Identifier">, </span><span class="Constant">`R´</span><span class="Identifier">, </span><span class="Constant">`x_p_F´</span><span class="Type">)</span>
+<span class="Type">@CALL_ALLOC_CB(</span><span class="Constant">`L´</span><span class="Identifier">, </span><span class="Constant">`R´</span><span class="Identifier">, </span><span class="Constant">`f_X_1_l_F´</span><span class="Type">)</span>
+<span class="Type">@CALL_ALLOC_CB(</span><span class="Constant">`S´</span><span class="Identifier">, </span><span class="Constant">`C´</span><span class="Identifier">, </span><span class="Constant">`f_X_fft_m_x_F´</span><span class="Type">)</span>
+<span class="Type">@CALL_ALLOC_CB(</span><span class="Constant">`S´</span><span class="Identifier">, </span><span class="Constant">`R´</span><span class="Identifier">, </span><span class="Constant">`f_X_y_p_v_1_F´</span><span class="Type">)</span>
+<span class="Type">@CALL_ALLOC_CB(</span><span class="Constant">`S´</span><span class="Identifier">, </span><span class="Constant">`C´</span><span class="Identifier">, </span><span class="Constant">`f_X_T_fft_m_x_F´</span><span class="Type">)</span>
+<span class="Type">@CALL_ALLOC_CB(</span><span class="Constant">`L´</span><span class="Identifier">, </span><span class="Constant">`R´</span><span class="Identifier">, </span><span class="Constant">`v_3_X_T_F´</span><span class="Type">)</span>
+<span class="Type">@CALL_ALLOC_CB(</span><span class="Constant">`S´</span><span class="Identifier">, </span><span class="Constant">`R´</span><span class="Identifier">, </span><span class="Constant">`f_X_T_1_nabla_tilde_f_even_b_F´</span><span class="Type">)</span>
+<span class="Type">@CALL_ALLOC_CB(</span><span class="Constant">`S´</span><span class="Identifier">, </span><span class="Constant">`R´</span><span class="Identifier">, </span><span class="Constant">`f_X_T_1_nabla_tilde_f_uneven_b_F´</span><span class="Type">)</span>
+<span class="Type">@CALL_ALLOC_CB(</span><span class="Constant">`S´</span><span class="Identifier">, </span><span class="Constant">`R´</span><span class="Identifier">, </span><span class="Constant">`f_X_T_2_delta_tilde_f_even_b_F´</span><span class="Type">)</span>
+<span class="Type">@CALL_ALLOC_CB(</span><span class="Constant">`S´</span><span class="Identifier">, </span><span class="Constant">`R´</span><span class="Identifier">, </span><span class="Constant">`f_X_T_2_delta_tilde_f_uneven_b_F´</span><span class="Type">)</span>
+<span class="Type">@CALL_ALLOC_CB(</span><span class="Constant">`L´</span><span class="Identifier">, </span><span class="Constant">`R´</span><span class="Identifier">, </span><span class="Constant">`f_p_X´</span><span class="Type">)</span>
+<span class="Type">@CALL_ALLOC_CB(</span><span class="Constant">`S´</span><span class="Identifier">, </span><span class="Constant">`C´</span><span class="Identifier">, </span><span class="Constant">`f_T_p_conj_fft_X´</span><span class="Type">)</span>
+<span class="Type">@CALL_ALLOC_CB(</span><span class="Constant">`L´</span><span class="Identifier">, </span><span class="Constant">`R´</span><span class="Identifier">, </span><span class="Constant">`x_p_X´</span><span class="Type">)</span>
+<span class="Type">@CALL_ALLOC_CB(</span><span class="Constant">`L´</span><span class="Identifier">, </span><span class="Constant">`C´</span><span class="Identifier">, </span><span class="Constant">`F_X_m_F_X´</span><span class="Type">)</span>
+<span class="Type">@CALL_ALLOC_CB(</span><span class="Constant">`S´</span><span class="Identifier">, </span><span class="Constant">`R´</span><span class="Identifier">, </span><span class="Constant">`y_plus_y_X´</span><span class="Type">)</span>
+<span class="Type">@CALL_ALLOC_CB(</span><span class="Constant">`S´</span><span class="Identifier">, </span><span class="Constant">`R´</span><span class="Identifier">, </span><span class="Constant">`x_plus_x_weights_X´</span><span class="Type">)</span>
+void getCallbacks() {
+  <span class="Statement">@undivert(</span>1<span class="Statement">)</span>}
+<span class="Identifier">@define(</span><span class="Constant">`@CALL_ROUND_BLOCK_SIZE_UP´</span>, <span class="Constant">`</span><span class="Special">(((</span><span class="Special">$1</span><span class="Special">)</span> % <span class="Special">(</span><span class="Special">$2</span><span class="Special">)</span> ? <span class="Special">(</span><span class="Special">$1</span><span class="Special">)</span> / <span class="Special">(</span><span class="Special">$2</span><span class="Special">)</span> : <span class="Special">(</span><span class="Special">$1</span><span class="Special">)</span> / <span class="Special">(</span><span class="Special">$2</span><span class="Special">)</span> + 1<span class="Special">))</span><span class="Constant">´</span><span class="Identifier">)</span>
+int setFloatDeviceZero(float* data, size_t count, int blocksize, cudaStream_t stream) {
+  kernel_set_float_zero&lt;&lt;&lt;<span class="Type">@CALL_ROUND_BLOCK_SIZE_UP(</span><span class="Constant">`count´</span><span class="Identifier">, </span><span class="Constant">`blocksize´</span><span class="Type">)</span>, blocksize, 0, stream&gt;&gt;&gt;(data, count % blocksize);
+  return 0;
+}
+
+void optimizeFcallback(cudaStream_t stream,  cudaError_t status, void* __restrict__ userData) {
+  struct streamCallback_informations *informations = ((struct streamCallback_informations*) userData);
+
+  __shared__ float part_Sums[32];
+
+  float value;
+
+  __shared__ float delta_nabla_f;
+  __shared__ float delta_or_nabla_abs;
+  __shared__ float complicatedSums;
+
+  value = delta_nabla_f_part_sums[threadIdx.x];
+  <span class="Type">@CALL_BUTTERFLY_BLOCK_REDUCTION(</span><span class="Constant">`value´</span><span class="Identifier">, </span><span class="Constant">`delta_nabla_f = value;´</span><span class="Type">)</span>
+
+  value = part_sums_var_d[threadIdx.x];
+  <span class="Type">@CALL_BUTTERFLY_BLOCK_REDUCTION(</span><span class="Constant">`value´</span><span class="Identifier">, </span><span class="Constant">`delta_or_nabla_abs = value;´</span><span class="Type">)</span>
+
+  value = nabla_f_o_scalar_prod_bracketo_x_o_minus_new_f_bracketc_part_sums_d[threadIdx.x];
+  <span class="Type">@CALL_BUTTERFLY_BLOCK_REDUCTION(</span><span class="Constant">`value´</span><span class="Identifier">, </span><span class="Constant">`compilcatedSums = value;´</span><span class="Type">)</span>
+
+  if (threadIdx.x == 0) {
+    if (informations-&gt;b % 2 == 0) {
+      if (*(informations-&gt;f_n_h) &lt; <span class="Type">@DEF_N_target_optimization_F°</span>) {
+        <span class="Comment">@dnl° optimization is finished</span>
+        informations-&gt;finished = true;
+        return;
+      }
+      informations-&gt;helper_struct_h-&gt;alpha = delta_or_nabla_abs / delta_nabla_f;
+    } else {
+      informations-&gt;helper_struct_h-&gt;alpha = delta_nabla_f / delta_or_nabla_abs;
+    }
+    if (informations-&gt;f_o_d - *(informations-&gt;f_n_d) &lt;= <span class="Type">@DEF_SIGMA_F°</span> * complicatedSums)
+      informations-&gt;helper_struct_d-&gt;beta *= <span class="Type">@DEF_BETA_F°</span>;
+    informations-&gt;f_o_d = *(informations-&gt;f_n_d);
+  }
+}
+
+int optimizeF(float* f_h, float* x_h, float* y_k_h, cudaStream_t stream) {
+  struct streamCallback_informations streamCallback;
+  <span class="Identifier">@define(</span><span class="Constant">`@_free_stack´</span>, <span class="Constant">`</span><span class="Statement">@ifdef(</span><span class="Constant">`@_free_stack1´</span>, <span class="Constant">`</span><span class="Type">@_free_stack1°@popdef(</span><span class="Constant">`@_free_stack1´</span><span class="Type">)@_free_stack°</span><span class="Constant">´</span><span class="Statement">)</span><span class="Constant">´</span><span class="Identifier">)</span>
+  <span class="Identifier">@define(</span><span class="Constant">`@DEF_CU_MALLOC´</span>, <span class="Constant">`</span><span class="Statement">@ifelse(</span><span class="Constant">`ndef´</span>, <span class="Constant">`</span><span class="Special">$5</span><span class="Constant">´</span>,,<span class="Constant">`</span><span class="Special">$2</span><span class="Constant">* ´</span><span class="Statement">)</span><span class="Special">$1</span><span class="Constant"> = NULL;</span>
+<span class="Constant">  cudaMalloc´</span><span class="Statement">@ifelse(</span><span class="Constant">`h´</span>, <span class="Constant">`</span><span class="Special">$4</span><span class="Constant">´</span>, <span class="Constant">`Host</span><span class="Identifier">@pushdef(</span><span class="Constant">`@_free_stack1´</span>, <span class="Constant">`cudaFreeHost</span><span class="Special">(</span><span class="Special">$1</span><span class="Special">)</span><span class="Constant">;</span>
+<span class="Constant">´</span><span class="Identifier">)</span><span class="Constant">´</span>, <span class="Constant">`</span><span class="Identifier">@pushdef(</span><span class="Constant">`@_free_stack1´</span>, <span class="Constant">`</span><span class="Special">$1</span><span class="Constant">´</span><span class="Identifier">)</span><span class="Constant">´</span><span class="Statement">)</span><span class="Constant">`</span><span class="Special">((</span>void**<span class="Special">)</span> &amp;<span class="Special">$1</span>, sizeof<span class="Special">(</span><span class="Special">$2</span><span class="Special">)</span> * <span class="Special">$3</span><span class="Special">)</span><span class="Constant">;´</span><span class="Identifier">)</span> <span class="Comment">@dnl° $1 = [device] pointer name, $2 = [device] pointer type (without the '*'), $3 = number of elements to allocate[, $4 = h (to allocate host space)</span>
+  <span class="Identifier">@define(</span><span class="Constant">`@DEF_CU_MALLOC_HTDC´</span>, <span class="Constant">`</span><span class="Type">@DEF_CU_MALLOC(</span><span class="Special">$@</span><span class="Type">)</span><span class="Statement">@ifelse(</span><span class="Constant">`´</span>, <span class="Constant">`</span><span class="Special">$7</span><span class="Constant">´</span>,,<span class="Constant">`</span>
+<span class="Special">$7</span><span class="Constant">´</span><span class="Statement">)@divert(</span>1<span class="Statement">)</span>
+<span class="Constant">  cudaMemcpyAsync</span><span class="Special">(</span><span class="Special">$1</span>, <span class="Special">$5</span>, sizeof<span class="Special">(</span><span class="Special">$2</span><span class="Special">)</span> * <span class="Special">$3</span>, cudaMemcpyHostToDevice, <span class="Special">$6</span><span class="Special">)</span><span class="Constant">;</span><span class="Statement">@divert(</span>0<span class="Statement">)@ifelse(</span><span class="Constant">`´</span>, <span class="Constant">`</span><span class="Special">$8</span><span class="Constant">´</span>,,<span class="Constant">`</span><span class="Statement">@divert(</span>2<span class="Statement">)</span>
+<span class="Special">$8</span><span class="Statement">@divert(</span>0<span class="Statement">)</span><span class="Constant">´</span><span class="Statement">)</span><span class="Constant">´</span><span class="Identifier">)</span> <span class="Comment">@dnl° $1 = device pointer name, $2 = device pointer type (without the '*'), $3 = number of elements to allocate, $4 = '' (just jump with a double ','), $5 = host pointer name, $6 = stream, $7 = optional (somthing to execute after the allocation and before scheduling the copy for the bunch of copys, $8 = optional (to execute after copying)</span>
+  <span class="Type">@DEF_CU_MALLOC_HTDC(</span><span class="Constant">`f_d´</span><span class="Identifier">, </span><span class="Constant">`float´</span><span class="Identifier">, </span><span class="Constant">`</span><span class="Type">@DEF_NUM_F_VALS°</span><span class="Constant">´</span><span class="Identifier">,, </span><span class="Constant">`f_h´</span><span class="Identifier">, </span><span class="Constant">`stream´</span><span class="Type">)</span>
+  <span class="Type">@DEF_CU_MALLOC_HTDC(</span><span class="Constant">`y_k_d´</span><span class="Identifier">, </span><span class="Constant">`float´</span><span class="Identifier">, </span><span class="Constant">`</span><span class="Type">@DEF_SIZE_Y°</span><span class="Constant">´</span><span class="Identifier">,, </span><span class="Constant">`y_k_h´</span><span class="Identifier">, </span><span class="Constant">`stream´</span><span class="Type">)</span>
+  <span class="Type">@DEF_CU_MALLOC_HTDC(</span><span class="Constant">`helper_struct_d´</span><span class="Identifier">, </span><span class="Constant">`store_f_X_T_1_informations´</span><span class="Identifier">, 1,, </span><span class="Constant">`helper_struct_h´</span><span class="Identifier">, </span><span class="Constant">`stream´</span><span class="Identifier">, </span><span class="Constant">`</span><span class="Type">@DEF_CU_MALLOC(</span><span class="Constant">`helper_struct_h´</span><span class="Identifier">, </span><span class="Constant">`store_f_X_T_1_informations´</span><span class="Identifier">, 1, </span><span class="Constant">`h´</span><span class="Type">)</span>
+<span class="Constant">  helper_struct_h-&gt;alpha = 0.5;</span>
+<span class="Constant">  helper_struct_h-&gt;beta = 0.5;´</span><span class="Type">)</span>
+  <span class="Type">@DEF_CU_MALLOC(</span><span class="Constant">`f_n_h´</span><span class="Identifier">, </span><span class="Constant">`float´</span><span class="Identifier">, </span><span class="Constant">`1´</span><span class="Identifier">, </span><span class="Constant">`h´</span><span class="Type">)</span>
+  <span class="Type">@DEF_CU_MALLOC(</span><span class="Constant">`helper_struct_h-&gt;vec_f_o´</span><span class="Identifier">, </span><span class="Constant">`float´</span><span class="Identifier">, </span><span class="Constant">`</span><span class="Type">@DEF_NUM_F_VALS°</span><span class="Constant">´</span><span class="Identifier">,,</span><span class="Constant">`ndef´</span><span class="Type">)</span>
+  <span class="Type">@DEF_CU_MALLOC(</span><span class="Constant">`helper_struct_h-&gt;vec_nabla_f_o´</span><span class="Identifier">, </span><span class="Constant">`float´</span><span class="Identifier">, </span><span class="Constant">`</span><span class="Type">@DEF_NUM_F_VALS°</span><span class="Constant">´</span><span class="Identifier">,,</span><span class="Constant">`ndef´</span><span class="Type">)</span>
+  <span class="Type">@DEF_CU_MALLOC(</span><span class="Constant">`x_p_d´</span><span class="Identifier">, </span><span class="Constant">`</span><span class="Type">@DEF_FFT_PRECISION(</span><span class="Constant">`C´</span><span class="Type">)</span><span class="Constant">´</span><span class="Identifier">, </span><span class="Statement">@eval(</span><span class="Type">@DEF_FFT_SIZE°</span> * <span class="Special">(</span><span class="Type">@DEF_FFT_SIZE°</span> / 2 + 1<span class="Special">)</span> * <span class="Type">@DEF_NUM_PATCHES°</span><span class="Statement">)</span><span class="Type">)</span>
+  <span class="Type">@DEF_CU_MALLOC_HTDC(</span><span class="Constant">`v_3_d´</span><span class="Identifier">, </span><span class="Constant">`float´</span><span class="Identifier">, </span><span class="Constant">`</span><span class="Type">@DEF_SIZE_Y°</span><span class="Constant">´</span><span class="Identifier">,,</span><span class="Constant">`x_h´</span><span class="Identifier">, </span><span class="Constant">`stream´</span><span class="Identifier">,,</span><span class="Constant">`cufftExecR2C</span><span class="Special">(</span>plan_x_p_F, v_3_d, x_p_d<span class="Special">)</span><span class="Constant">;</span>
+<span class="Constant">  setFloatDeviceZero</span><span class="Special">(</span>v_3_d, <span class="Type">@DEF_SIZE_Y°</span>, 128, stream<span class="Special">)</span><span class="Constant">;´</span><span class="Type">)</span>
+  <span class="Type">@DEF_CU_MALLOC(</span><span class="Constant">`y_d´</span><span class="Identifier">, </span><span class="Constant">`float´</span><span class="Identifier">, </span><span class="Constant">`</span><span class="Type">@DEF_SIZE_Y°</span><span class="Constant">´</span><span class="Type">)</span>
+  <span class="Type">@DEF_CU_MALLOC(</span><span class="Constant">`v_tmp_cmplx_d´</span><span class="Identifier">, </span><span class="Constant">`</span><span class="Type">@DEF_FFT_PRECISION(</span><span class="Constant">`C´</span><span class="Type">)</span><span class="Constant">´</span><span class="Identifier">, </span><span class="Statement">@eval(</span><span class="Type">@DEF_FFT_SIZE°</span> * <span class="Special">(</span><span class="Type">@DEF_FFT_SIZE°</span> / 2 + 1<span class="Special">)</span> * <span class="Type">@DEF_NUM_PATCHES°</span><span class="Statement">)</span><span class="Type">)</span>
+  <span class="Type">@DEF_CU_MALLOC(</span><span class="Constant">`f_n_d´</span><span class="Identifier">, </span><span class="Constant">`float´</span><span class="Identifier">, 1</span><span class="Type">)</span>
+  <span class="Type">@DEF_CU_MALLOC(</span><span class="Constant">`count_d´</span><span class="Identifier">, </span><span class="Constant">`unsigned int´</span><span class="Identifier">, 1</span><span class="Type">)</span>
+  <span class="Type">@DEF_CU_MALLOC(</span><span class="Constant">`f_n_part_sums_d´</span><span class="Identifier">, </span><span class="Constant">`float´</span><span class="Identifier">, </span><span class="Type">@CALL_ROUND_BLOCK_SIZE_UP(@DEF_SIZE_Y°</span><span class="Identifier">, 1024</span><span class="Type">))</span>
+  <span class="Type">@DEF_CU_MALLOC(</span><span class="Constant">`helper_struct_h-&gt;abs_vec_nabla_f_part_sums´</span><span class="Identifier">, </span><span class="Constant">`float´</span><span class="Identifier">, </span><span class="Type">@DEF_NUM_F_VALS°</span><span class="Identifier">,,</span><span class="Constant">`ndef´</span><span class="Type">)</span>
+  <span class="Type">@DEF_CU_MALLOC(</span><span class="Constant">`helper_struct_h-&gt;abs_vec_delta_f_part_sums´</span><span class="Identifier">, </span><span class="Constant">`float´</span><span class="Identifier">, </span><span class="Type">@DEF_NUM_F_VALS°</span><span class="Identifier">,,</span><span class="Constant">`ndef´</span><span class="Type">)</span>
+  <span class="Type">@DEF_CU_MALLOC(</span><span class="Constant">`helper_struct_h-&gt;nabla_f_o_scalar_prod_bracketo_x_o_minus_new_f_bracketc_part_sums_d´</span><span class="Identifier">, </span><span class="Constant">`float´</span><span class="Identifier">, </span><span class="Type">@DEF_NUM_F_VALS°</span><span class="Identifier">,,</span><span class="Constant">`ndef´</span><span class="Type">)</span>
+  <span class="Type">@DEF_CU_MALLOC(</span><span class="Constant">`helper_struct_h-&gt;nabla_f_scalar_prod_delta_f_part_sums´</span><span class="Identifier">, </span><span class="Constant">`float´</span><span class="Identifier">, 32768,,</span><span class="Constant">`ndef´</span><span class="Type">)</span> <span class="Comment">@dnl° </span><span class="Todo">TODO:</span><span class="Comment"> care and decide about helper_struct_h-&gt;nabla_f_scalar_prod_delta_f_part_sums size '32768'</span>
+  streamCallback.finished = false;
+  streamCallback.helper_struct_d = helper_struct_d;
+  streamCallback.helper_struct_h = helper_struct_h;
+  streamCallback.f_n_h = f_n_h;
+  <span class="Comment">@dnl° </span><span class="Todo">TODO:</span><span class="Comment"> check for memset to f_n_d (if it is necessary)</span>
+  <span class="Identifier">@define(</span><span class="Constant">`@nargs´</span>, <span class="Constant">`</span><span class="Special">$#</span><span class="Constant">´</span><span class="Identifier">)</span> <span class="Comment">@dnl° just emit the number of arguments given. Usefull to determine the size of a grouped argument.</span>
+  <span class="Identifier">@define(</span><span class="Constant">`@_echo_q´</span>, <span class="Constant">`</span><span class="Special">$@</span><span class="Constant">´</span><span class="Identifier">)</span> <span class="Comment">@dnl° just a macro to ecpand into all the args, qouted. Usefull to expand a grouped argument.</span>
+  <span class="Identifier">@define(</span><span class="Constant">`@echo_1´</span>, <span class="Constant">``</span><span class="Special">$1</span><span class="Constant">´´</span><span class="Identifier">)</span>
+  <span class="Identifier">@define(</span><span class="Constant">`@echo_2´</span>, <span class="Constant">``</span><span class="Special">$2</span><span class="Constant">´´</span><span class="Identifier">)</span>
+  <span class="Identifier">@define(</span><span class="Constant">`@_CB_PLAN_STMT´</span>, <span class="Constant">`</span><span class="Type">@_CB_PLAN_STMT1(</span><span class="Constant">`</span><span class="Special">$4</span><span class="Constant">´</span><span class="Identifier">, </span><span class="Constant">`</span><span class="Special">$2</span><span class="Constant">´</span><span class="Identifier">, </span><span class="Constant">`</span><span class="Special">$3</span><span class="Constant">´</span><span class="Identifier">, </span><span class="Special">(</span><span class="Constant">`</span><span class="Special">$#</span><span class="Constant">´</span>, <span class="Constant">`</span><span class="Special">$5</span><span class="Constant">´</span><span class="Special">)</span><span class="Identifier">, </span><span class="Type">@_echo_q°</span><span class="Special">$1</span><span class="Type">)</span><span class="Constant">´</span><span class="Identifier">)</span>
+  <span class="Identifier">@define(</span><span class="Constant">`@_CB_PLAN_STMT1´</span>, <span class="Constant">`</span><span class="Statement">@ifelse(</span>5, @echo_1<span class="Special">$4</span>, <span class="Constant">`for </span><span class="Special">(</span>int k = 0; k &lt; @echo_2<span class="Special">$4</span>; k++<span class="Special">)</span><span class="Constant"> ´</span><span class="Statement">)</span><span class="Constant">cufftXtSetCallback</span><span class="Special">(</span>plan_<span class="Special">$2</span><span class="Statement">@ifelse(</span>5, @echo_1<span class="Special">$4</span>, <span class="Constant">`[k]´</span><span class="Statement">)</span>, <span class="Special">((</span>void**<span class="Special">)</span> &amp;_h_<span class="Statement">@ifelse(</span><span class="Constant">`l´</span>, <span class="Constant">`</span><span class="Special">$1</span><span class="Constant">´</span>, <span class="Constant">`load_´</span>, <span class="Constant">`s´</span>, <span class="Constant">`</span><span class="Special">$1</span><span class="Constant">´</span>, <span class="Constant">`store_´</span><span class="Statement">)@ifelse(</span><span class="Constant">`´</span>, <span class="Constant">`</span><span class="Special">$5</span><span class="Constant">´</span>, <span class="Constant">`</span><span class="Special">$2</span><span class="Constant">´</span>, <span class="Special">$5</span><span class="Statement">)</span><span class="Special">)</span>, CUFFT_CB_<span class="Statement">@ifelse(</span><span class="Constant">`lC´</span>, <span class="Constant">`</span><span class="Special">$1$3</span><span class="Constant">´</span>, <span class="Constant">`LD_COMPLEX´</span>, <span class="Constant">`lR´</span>, <span class="Constant">`</span><span class="Special">$1$3</span><span class="Constant">´</span>, <span class="Constant">`LD_REAL´</span>, <span class="Constant">`sC´</span>, <span class="Constant">`</span><span class="Special">$1$3</span><span class="Constant">´</span>, <span class="Constant">`ST_REAL´</span>, <span class="Constant">`sR´</span>, <span class="Constant">`</span><span class="Special">$1$3</span><span class="Constant">´</span>, <span class="Constant">`ST_COMPLEX´</span><span class="Statement">)</span>, <span class="Statement">@ifelse(</span><span class="Constant">`´</span>, <span class="Constant">`</span><span class="Special">$6</span><span class="Constant">´</span>, <span class="Constant">`NULL´</span>, <span class="Constant">`</span><span class="Special">((</span>void**<span class="Special">)</span> &amp;<span class="Special">$6</span>_d<span class="Statement">@ifelse(</span>5, @echo_1<span class="Special">$4</span>, <span class="Constant">`[k]´</span><span class="Statement">)</span><span class="Special">)</span><span class="Constant">´</span><span class="Statement">)</span><span class="Special">)</span><span class="Constant">;</span><span class="Statement">@ifelse(</span><span class="Constant">`6´</span>, <span class="Constant">`</span><span class="Special">$#</span><span class="Constant">´</span>, <span class="Constant">`´</span>, <span class="Constant">`</span>
+<span class="Constant">    cufftXtSetCallbackSharedSize</span><span class="Special">(</span>plan_<span class="Special">$2</span><span class="Statement">@ifelse(</span>5, @echo_1<span class="Special">$4</span>, <span class="Constant">`[k]´</span><span class="Statement">)</span>, CUFFT_CB_<span class="Statement">@ifelse(</span><span class="Constant">`lC´</span>, <span class="Constant">`</span><span class="Special">$1$3</span><span class="Constant">´</span>, <span class="Constant">`LD_COMPLEX´</span>, <span class="Constant">`lR´</span>, <span class="Constant">`</span><span class="Special">$1$3</span><span class="Constant">´</span>, <span class="Constant">`LD_REAL´</span>, <span class="Constant">`sC´</span>, <span class="Constant">`</span><span class="Special">$1$3</span><span class="Constant">´</span>, <span class="Constant">`ST_REAL´</span>, <span class="Constant">`sR´</span>, <span class="Constant">`</span><span class="Special">$1$3</span><span class="Constant">´</span>, <span class="Constant">`ST_COMPLEX´</span><span class="Statement">)</span>, <span class="Special">$7</span><span class="Special">)</span><span class="Constant">;´</span><span class="Statement">)</span><span class="Constant">´</span><span class="Identifier">)</span>
+    <span class="Comment">@dnl° </span><span class="Todo">TODO:</span><span class="Comment"> insert the shared memory reservation call (with semicolon), as well as the following at the end: ´)´) m4_dnl &lt;insert documentation here&gt;</span>
+  <span class="Identifier">@define(</span><span class="Constant">`@DEF_CUFFT_HANDLE´</span>, <span class="Constant">`cufftHandle plan_</span><span class="Special">$1</span><span class="Statement">@ifelse(</span>6, <span class="Constant">`</span><span class="Special">$#</span><span class="Constant">´</span>, <span class="Constant">`[</span><span class="Special">$6</span><span class="Constant">]´</span><span class="Statement">)</span><span class="Constant">;</span>
+<span class="Constant">  {</span>
+<span class="Constant">    </span><span class="Statement">@ifelse(</span>6, <span class="Constant">`</span><span class="Special">$#</span><span class="Constant">´</span>, <span class="Constant">`for</span><span class="Special">(</span>int k = 0; k &lt; <span class="Special">$6</span>; k++<span class="Special">)</span><span class="Constant"> cufftCreate</span><span class="Special">(</span>&amp;plan_<span class="Special">$1</span>[k]<span class="Special">)</span><span class="Constant">;´</span>, <span class="Constant">`cufftCreate</span><span class="Special">(</span>&amp;plan_<span class="Special">$1</span><span class="Special">)</span><span class="Constant">;´</span><span class="Statement">)</span>
+<span class="Constant">    int inembed[] = { 1, </span><span class="Statement">@ifelse(</span><span class="Constant">`C´</span>, <span class="Constant">`</span><span class="Special">$2</span><span class="Constant">´</span>, <span class="Statement">@eval(</span><span class="Type">@DEF_FFT_SIZE°</span> / 2 + 1<span class="Statement">)</span>, <span class="Type">@DEF_concatVarSize°</span><span class="Statement">)</span><span class="Constant"> };</span>
+<span class="Constant">    int onembed[] = { 1, </span><span class="Statement">@ifelse(</span><span class="Constant">`C´</span>, <span class="Constant">`</span><span class="Special">$2</span><span class="Constant">´</span>, <span class="Type">@DEF_concatVarSize°</span>, <span class="Statement">@eval(</span><span class="Type">@DEF_FFT_SIZE°</span> / 2 + 1<span class="Statement">)</span><span class="Statement">)</span><span class="Constant"> };</span>
+<span class="Constant">    int n[] = { </span><span class="Type">@DEF_FFT_SIZE°</span><span class="Constant">, </span><span class="Type">@DEF_FFT_SIZE°</span><span class="Constant"> };</span>
+<span class="Constant">    </span><span class="Statement">@ifelse(</span>6, <span class="Constant">`</span><span class="Special">$#</span><span class="Constant">´</span>, <span class="Constant">`for</span><span class="Special">(</span>int k = 0; k &lt; <span class="Special">$6</span>; k++<span class="Special">)</span><span class="Constant"> ´</span><span class="Statement">)</span><span class="Constant">cufftPlanMany</span><span class="Special">(</span><span class="Statement">@ifelse(</span>6, <span class="Constant">`</span><span class="Special">$#</span><span class="Constant">´</span>, <span class="Constant">`&amp;</span><span class="Special">(</span>plan_<span class="Special">$1</span>[k]<span class="Special">)</span><span class="Constant">´</span>, <span class="Constant">`&amp;plan_</span><span class="Special">$1</span><span class="Constant">´</span><span class="Statement">)</span>, 2, n, inembed, 1, <span class="Statement">@ifelse(</span><span class="Constant">`C´</span>, <span class="Constant">`</span><span class="Special">$2</span><span class="Constant">´</span>, <span class="Constant">`</span><span class="Statement">@eval(</span><span class="Type">@DEF_FFT_SIZE°</span> * <span class="Special">(</span><span class="Type">@DEF_FFT_SIZE°</span> / 2 + 1<span class="Special">)</span><span class="Statement">)</span><span class="Constant">´</span>, <span class="Constant">`R´</span>, <span class="Constant">`</span><span class="Special">$2</span><span class="Constant">´</span>, <span class="Constant">`</span><span class="Statement">@eval(</span><span class="Type">@DEF_concatVarSize°</span> ** 2<span class="Statement">)</span><span class="Constant">´</span><span class="Statement">)</span>, onembed, 1, <span class="Statement">@ifelse(</span><span class="Constant">`C´</span>, <span class="Constant">`</span><span class="Special">$2</span><span class="Constant">´</span>, <span class="Constant">`</span><span class="Statement">@eval(</span><span class="Type">@DEF_concatVarSize°</span> ** 2<span class="Statement">)</span><span class="Constant">, CUFFT_C2R´</span>, <span class="Constant">`R´</span>, <span class="Constant">`</span><span class="Special">$2</span><span class="Constant">´</span>, <span class="Constant">`</span><span class="Statement">@eval(</span><span class="Type">@DEF_FFT_SIZE°</span> * <span class="Special">(</span><span class="Type">@DEF_FFT_SIZE°</span> / 2 + 1<span class="Special">)</span><span class="Statement">)</span><span class="Constant">, CUFFT_R2C´</span><span class="Statement">)</span>, <span class="Type">@DEF_NUM_PATCHES°</span><span class="Special">)</span><span class="Constant">;</span>
+<span class="Constant">    </span><span class="Statement">@ifelse(</span>6, <span class="Constant">`</span><span class="Special">$#</span><span class="Constant">´</span>, <span class="Constant">`for</span><span class="Special">(</span>int k = 0; k &lt; <span class="Special">$6</span>; k++<span class="Special">)</span><span class="Constant"> cufftSetStream</span><span class="Special">(</span>plan_<span class="Special">$1</span>[k], <span class="Special">$3</span>[k]<span class="Special">)</span><span class="Constant">;´</span>, <span class="Constant">`cufftSetStream</span><span class="Special">(</span>plan_<span class="Special">$1</span>, <span class="Special">$3</span><span class="Special">)</span><span class="Constant">;´</span><span class="Statement">)</span>
+<span class="Constant">    </span><span class="Statement">@ifelse(</span>@nargs<span class="Special">$4</span>, <span class="Constant">`1´</span>, <span class="Constant">`´</span>, <span class="Constant">`</span><span class="Type">@_CB_PLAN_STMT(</span><span class="Special">$4</span><span class="Identifier">, </span><span class="Constant">`</span><span class="Special">$1</span><span class="Constant">´</span><span class="Identifier">, </span><span class="Constant">`</span><span class="Special">$2</span><span class="Constant">´</span><span class="Identifier">, </span><span class="Constant">`l´</span><span class="Statement">@ifelse(</span>6, <span class="Constant">`</span><span class="Special">$#</span><span class="Constant">´</span>, <span class="Constant">`, `</span><span class="Special">$6</span><span class="Constant">´´</span><span class="Statement">)</span><span class="Type">)</span><span class="Constant">´</span><span class="Statement">)</span>
+<span class="Constant">    </span><span class="Statement">@ifelse(</span>@nargs<span class="Special">$5</span>, <span class="Constant">`1´</span>, <span class="Constant">`´</span>, <span class="Constant">`</span><span class="Type">@_CB_PLAN_STMT(</span><span class="Special">$5</span><span class="Identifier">, </span><span class="Constant">`</span><span class="Special">$1</span><span class="Constant">´</span><span class="Identifier">, </span><span class="Constant">`</span><span class="Special">$2</span><span class="Constant">´</span><span class="Identifier">, </span><span class="Constant">`s´</span><span class="Statement">@ifelse(</span>6, <span class="Constant">`</span><span class="Special">$#</span><span class="Constant">´</span>, <span class="Constant">`, `</span><span class="Special">$6</span><span class="Constant">´´</span><span class="Statement">)</span><span class="Type">)</span><span class="Constant">´</span><span class="Statement">)</span>
+<span class="Constant">  }´</span><span class="Identifier">)</span>
+  <span class="Comment">@dnl° $1 = name of the plan, without the leading plan_, $2 = 'C' if C2R; 'R' if R2C, $3 = name of the stream to execute in, $4 = ([[loadCallbackName &lt;without the leading _h_load_, if omitted: _h_load_$1&gt;], [callerInfo device pointer&lt;without the trailing _d, if omitted: NULL&gt;] &lt;to omit: leave the parenthesis empty and omit the comma in between&gt;]), \</span>
+  <span class="Comment">@dnl° $5 = ([[storeCallbackName &lt;without the leading _h_store_, if omitted: _h_store_$1&gt;], [callerInfo device pointer &lt;without the trailing _d, if omited: NULL&gt;][, size to request for __shared__ memory allocation &lt;inclusive any sizeof(...) factors&gt;]&lt;to omit: leave the parenthesis empty and omit the comma in between&gt;])</span>
+  <span class="Comment">@dnl° [$6 = num_plan_clones_with_streams]</span>
+  <span class="Statement">@undivert(</span>1<span class="Statement">)</span>
+  <span class="Type">@DEF_CUFFT_HANDLE°</span>(`x_p_F´, `R´, `stream´, (,), ())
+  <span class="Type">@DEF_CUFFT_HANDLE°</span>(`f_X_1_l_F´, `R´, `stream´, (,), (`f_X_fft_m_x_F´, `x_p´))
+  <span class="Type">@DEF_CUFFT_HANDLE°</span>(`f_X_1_s_F´, `C´, `stream´, (), (`f_X_y_p_v_1_F´,))
+  <span class="Type">@DEF_CUFFT_HANDLE°</span>(`f_X_T_l_F´, `R´, `stream´, (`v_3_X_T_F´,), (`f_X_T_fft_m_x_F´, `x_p´))
+  <span class="Type">@DEF_CUFFT_HANDLE°</span>(`f_X_T_1_nabla_tilde_f_even_b_F´, `C´, `stream´, (), (, `helper_struct´, `sizeof(float) * 32´))
+  <span class="Type">@DEF_CUFFT_HANDLE°</span>(`f_X_T_1_nabla_tilde_f_uneven_b_F´, `C´, `stream´, (), (, `helper_struct´, `sizeof(float) * 32´))
+  <span class="Type">@DEF_CUFFT_HANDLE°</span>(`f_X_T_2_delta_tilde_f_even_b_F´, `C´, `stream´, (), (, `helper_struct´, `sizeof(float) * 32´))
+  <span class="Type">@DEF_CUFFT_HANDLE°</span>(`f_X_T_2_delta_tilde_f_uneven_b_F´, `C´, `stream´, (), (, `helper_struct´, `sizeof(float) * 32´))
+  <span class="Statement">@undivert(</span>2<span class="Statement">)</span>
+  do {
+    for (int b=0; b &lt; <span class="Type">@DEF_m°</span>; b++) {
+      cufftExecR2C(plan_f_X_1_l_F, f_d, v_tmp_cmplx_d);
+      setFloatDeviceZero(y_d, <span class="Type">@DEF_SIZE_Y°</span>, 128, stream);
+      cufftExecC2R(plan_f_X_1_s_F, v_tmp_cmplx_d, y_d);
+      kernel_v_3_gets_y_min_y_k_and_f_n_gets_abs_bracketo_y_min_y_i_bracketc_sqr&lt;&lt;&lt;<span class="Type">@CALL_ROUND_BLOCK_SIZE_UP(</span><span class="Constant">`</span><span class="Type">@DEF_SIZE_Y°</span><span class="Constant">´</span><span class="Identifier">, </span><span class="Constant">`1024´</span><span class="Type">)</span>, 1024, 0, stream&gt;&gt;&gt;(v_3_d, y_d, y_k_d, f_n_part_sums_d, f_n_d, count_d);
+      cufftExecR2C(plan_f_X_T_l_F, v_3_d, v_tmp_cmplx_d);
+      if(b % 2 == 0)
+        cufftExecC2R(plan_f_X_T_1_nabla_tilde_f_even_b_F, v_tmp_cmplx_d, v_3_d);
+      else
+        cufftExecC2R(plan_f_X_T_1_nabla_tilde_f_uneven_b_F, v_tmp_cmplx_d, v_3_d);
+      cufftExecR2C(plan_f_X_1_l_F, helper_struct_h-&gt;vec_nabla_f_o, v_tmp_cmplx_d);
+      setFloatDeviceZero(y_d, <span class="Type">@DEF_SIZE_Y°</span>, 128, stream);
+      cufftExecC2R(plan_f_X_1_s_F, v_tmp_cmplx_d, v_3_d);
+      cufftExecR2C(plan_f_X_T_l_F, v_3_d, v_tmp_cmplx_d);
+      if(b % 2 == 0)
+        cufftExecC2R(plan_f_X_T_2_delta_tilde_f_even_b_F, v_tmp_cmplx_d, v_3_d);
+      else
+        cufftExecC2R(plan_f_X_T_2_delta_tilde_f_uneven_b_F, v_tmp_cmplx_d, v_3_d);
+      cudaMemcpyAsync((void*) helper_struct_h, (void*) helper_struct_d, sizeof(store_f_X_T_1_informations), cudaMemcpyDeviceToHost, stream);
+      if (b == 0) {
+        while(cudaErrorNotReady == cudaStreamQuery(stream))
+          usleep(<span class="Type">@DEF_SLEEP_TIME_POLL°</span>); <span class="Comment">@dnl° </span><span class="Todo">TODO:</span><span class="Comment"> convert from current runtime-based allocation mechanism to precalculated one, thereby preventing the hangup happening here.</span>
+        <span class="Type">@DEF_CU_MALLOC(</span><span class="Constant">`delta_nabla_f_part_sums_h´</span><span class="Identifier">, </span><span class="Constant">`float´</span><span class="Identifier">, </span><span class="Constant">`helper_struct_h-&gt;block_num´</span><span class="Identifier">, </span><span class="Constant">`h´</span><span class="Type">)</span> <span class="Comment">@dnl° </span><span class="Todo">TODO:</span><span class="Comment"> further research the reason of using an additional '0' as the last argument to this call</span>
+        <span class="Type">@DEF_CU_MALLOC(</span><span class="Constant">`part_sums_var_h´</span><span class="Identifier">, </span><span class="Constant">`float´</span><span class="Identifier">, </span><span class="Constant">`helper_struct_h-&gt;block_num´</span><span class="Identifier">, </span><span class="Constant">`h´</span><span class="Type">)</span>
+        <span class="Type">@DEF_CU_MALLOC(</span><span class="Constant">`streamCallback.nabla_f_o_scalar_prod_bracketo_x_o_minus_new_f_bracketc_part_sums_h´</span><span class="Identifier">, </span><span class="Constant">`float´</span><span class="Identifier">, </span><span class="Constant">`helper_struct_h-&gt;block_num´</span><span class="Identifier">, </span><span class="Constant">`h´</span><span class="Identifier">, </span><span class="Constant">`ndef´</span><span class="Type">)</span>
+        streamCallback.delta_nabla_f_part_sums_h = delta_nabla_f_part_sums_h;
+        streamCallback.part_sums_var_h = part_sums_var_h;
+      }
+      cudaMemcpyAsync((void*) delta_nabla_f_part_sums_h, (void*) helper_struct_h-&gt;nabla_f_scalar_prod_delta_f_part_sums, sizeof(float) * helper_struct_h-&gt;block_num, cudaMemcpyDeviceToHost, stream);
+      if (b % 2 == 0)
+        cudaMemcpyAsync((void*) part_sums_var_h, (void*) helper_struct_h-&gt;abs_vec_nabla_f_part_sums, sizeof(float) * helper_struct_h-&gt;block_num, cudaMemcpyDeviceToHost, stream);
+      else
+        cudaMemcpyAsync((void*) part_sums_var_h, (void*) helper_struct_h-&gt;abs_vec_delta_f_part_sums, sizeof(float) * helper_struct_h-&gt;block_num, cudaMemcpyDeviceToHost, stream);
+      cudaMemcpyAsync((void*) f_n_h, (void*) f_n_d, sizeof(float), cudaMemcpyDeviceToHost, stream);
+      cudaMemcpyAsync((void*) streamCallback.nabla_f_o_scalar_prod_bracketo_x_o_minus_new_f_bracketc_part_sums_h, (void*) helper_struct_h-&gt;nabla_f_o_scalar_prod_bracketo_x_o_minus_new_f_bracketc_part_sums_d, sizeof(float) * helper_struct_h-&gt;block_num, cudaMemcpyDeviceToHost, stream);
+      cudaStreamAddCallback(stream, (cudaStreamCallback_t) optimizeFcallback, (void*) &amp;streamCallback, 0);
+      if (b % 2 == 0) {
+        while(cudaErrorNotReady == cudaStreamQuery(stream))
+          usleep(<span class="Type">@DEF_SLEEP_TIME_POLL°</span>);
+        if (streamCallback.finished)
+          goto end_loop;
+      }
+      cudaMemcpyAsync(helper_struct_d, helper_struct_h, sizeof(store_f_X_T_1_informations), cudaMemcpyHostToDevice, stream);
+    }
+  } while (true); <span class="Comment">@dnl° </span><span class="Todo">TODO:</span><span class="Comment"> check if while (true) is really the right thing to do here.</span>
+  end_loop: cudaMemcpyAsync((void*) f_h, (void*) f_d, sizeof(float) * <span class="Type">@DEF_NUM_F_VALS°</span>, cudaMemcpyDeviceToHost, stream);
+  while(cudaErrorNotReady == cudaStreamQuery(stream))
+    usleep(<span class="Type">@DEF_SLEEP_TIME_POLL°</span>);
+  <span class="Type">@_free_stack°</span>
+  return 0;
+}
+<span class="Comment">@dnl° __device__ @DEF_FFT_PRECISION(`R´) load_f_p_X(void* __restrict__ dataIn, size_t offset, void* __restrict__ callerInfo, void* __restrict__ sharedPtr) {</span>
+<span class="Comment">@dnl° @CALL_RESTRICT_WITH_PADDING(`F´, `return 0;´)</span>
+<span class="Comment">@dnl° return @CALL_GEWICHTUNG(`xPos´, `yPos´) * ((@DEF_FFT_PRECISION(`R´)*) dataIn)[(@DEF_SIZE_F° * @DEF_SIZE_F°) * patchNum + SIZE_F * xPosStoed + yPosStored];</span>
+<span class="Comment">@dnl°} @dnl° </span><span class="Todo">TODO:</span><span class="Comment"> check why this is already done above. seems kinda strange, but it may be the first part of optimizeX() I did back then... also this is probably not the right call to @CALL_GEWICHTUNG(), as I did it differently above.</span>
+
+
+__global__ void kernel_nabla_f_to_nabla_tilde_f_X(const float* const __restrict__ v_4, float* __restrict__ X, float* __restrict__ nabla_tilde_f, const float * const __restrict__ alpha_beta, float* __restrict__ scalar_prod__bo_nabla_f__bo_x_o_min_X__bc__bc, unsigned int* __restrict__ count, float* __restrict__ thread_part_sums) {
+  <span class="Type">@DEF_conv_reduce(</span><span class="Constant">`float x_o_val = X[index];</span>
+<span class="Constant">    float v_4_val = v_4[index] * .5f;</span>
+<span class="Constant">    float nabla_f_o_val = nabla_tilde_f[index];</span>
+<span class="Constant">    float nabla_tilde_val = v_4_val &gt; 0 &amp;&amp; 0 == x_o_val ? 0 : v_4_val;</span>
+<span class="Constant">    float x_val = x_o_val - </span><span class="Special">(</span>*alpha_beta<span class="Special">)</span><span class="Constant"> * nabla_tilde_val;</span>
+<span class="Constant">    diff = nabla_f_o_val * </span><span class="Special">(</span>x_o_val - x_val<span class="Special">)</span><span class="Constant">;</span>
+<span class="Constant">    nabla_tilde_f[index] = nabla_tilde_val;</span>
+<span class="Constant">    X[index] = x_val;´</span><span class="Identifier">, </span><span class="Constant">`thread_part_sums´</span><span class="Identifier">, </span><span class="Constant">`scalar_prod__bo_nabla_f__bo_x_o_min_X__bc__bc´</span><span class="Type">)</span>
+}
+__global__ void kernel_delta_nabla_tilde_f_X(float3* const __restrict__ thread_part_sums, const float* const __restrict__ nabla_tilde_f, const float* const __restrict__ delta_tilde_f, const float* const __restrict__ f_n, double* const __restrict__ beta, const int* const __restrict__ b, unsigned int* const __restrict__ count, const float* const __restrict__ scalar_prod__bo_nabla_f__bo_x_o_min_X__bc__bc, float* const __restrict__ f_o, float* const __restrict__ a, const int num_images, boolean * const __restrict__ finished) {
+
+  int index = blockIdx.x * blockDim.x + threadIdx.x;
+  float f_n_i;
+  float scalar_prod;
+  float abs;
+  __shared__ boolean isLastBlockDone;
+  __shared__ float part_Sums[32];
+  <span class="Type">@DEF_BLOCK_TOO_HIGH_THREADS_XY°</span>{
+    scalar_prod = 0;
+    abs = 0;
+  } else {
+    scalar_prod = nabla_tilde_f[index] * delta_tilde_f[index];
+    abs = (*b%2==0?nabla_tilde_f:delta_tilde_f)[index];
+  }
+  if(index &gt;= num_images)
+    f_n_i = 0;
+  else
+    f_n_i = f_n[index];
+  <span class="Type">@CALL_BUTTERFLY_BLOCK_REDUCTION(</span><span class="Constant">`abs´</span><span class="Identifier">, </span><span class="Constant">`thread_part_sums[blockIdx.x].x = abs;´</span><span class="Type">)</span>
+  <span class="Type">@CALL_BUTTERFLY_BLOCK_REDUCTION(</span><span class="Constant">`scalar_prod´</span><span class="Identifier">, </span><span class="Constant">`thread_part_sums[blockIdx.x].y = scalar_prod;´</span><span class="Type">)</span>
+  <span class="Type">@CALL_BUTTERFLY_BLOCK_REDUCTION(</span><span class="Constant">`f_n_i´</span><span class="Identifier">, </span><span class="Constant">`thread_part_sums[blockIdx.x].z = f_n_i;</span>
+<span class="Constant">    __threadfence</span><span class="Special">()</span><span class="Constant">;</span>
+<span class="Constant">    unsigned int value = atomicInc</span><span class="Special">(</span>count, gridDim.x<span class="Special">)</span><span class="Constant">;</span>
+<span class="Constant">    isLastBlockDone = </span><span class="Special">(</span>value == <span class="Special">(</span>gridDim.x - 1<span class="Special">))</span><span class="Constant">;´</span><span class="Type">)</span>
+  __syncthreads();
+  if (isLastBlockDone) {
+    if (gridDim.x &gt;  blockDim.x) {
+      abs = 0;
+      for (int x=0; (gridDim.x % blockDim.x) == 0 ? x &lt; (gridDim.x / blockDim.x) : x &lt;= (gridDim.x / blockDim.x); x++)
+        abs += (gridDim.x % blockDim.x) == 0 || threadIdx.x * blockDim.x &lt; gridDim.x ? thread_part_sums[threadIdx.x * blockDim.x].x : 0;
+      scalar_prod = 0;
+      for (int x=0; (gridDim.x % blockDim.x) == 0 ? x &lt; (gridDim.x / blockDim.x) : x &lt;= (gridDim.x / blockDim.x); x++)
+        scalar_prod += (gridDim.x % blockDim.x) == 0 || threadIdx.x * blockDim.x &lt; gridDim.x ? thread_part_sums[threadIdx.x * blockDim.x].y : 0;
+      f_n_i = 0;
+      for (int x=0; (gridDim.x % blockDim.x) == 0 ? x &lt; (gridDim.x / blockDim.x) : x &lt;= (gridDim.x / blockDim.x); x++)
+        f_n_i += (gridDim.x % blockDim.x) == 0 || threadIdx.x * blockDim.x &lt; gridDim.x ? thread_part_sums[threadIdx.x * blockDim.x].z : 0;
+    }
+    <span class="Type">@CALL_BUTTERFLY_BLOCK_REDUCTION(</span><span class="Constant">`abs´</span><span class="Identifier">, </span><span class="Constant">`´</span><span class="Type">)</span> <span class="Comment">@dnl° reduction across the partial sums</span>
+    <span class="Type">@CALL_BUTTERFLY_BLOCK_REDUCTION(</span><span class="Constant">`scalar_prod´</span><span class="Identifier">, </span><span class="Constant">`´</span><span class="Type">)</span> <span class="Comment">@dnl° reduction across the partial sums</span>
+    <span class="Type">@CALL_BUTTERFLY_BLOCK_REDUCTION(</span><span class="Constant">`f_n_i´</span><span class="Identifier">, </span><span class="Constant">`if</span><span class="Special">(</span>*b%2==0<span class="Special">)</span>
+<span class="Constant">      if</span><span class="Special">(</span>abs&lt;<span class="Type">@DEF_N_target_optimization_X°</span><span class="Special">)</span><span class="Constant"> *finished = true;</span>
+<span class="Constant">      else *a = </span><span class="Special">(</span>float<span class="Special">)</span><span class="Constant"> </span><span class="Special">(((</span>double<span class="Special">)</span> abs<span class="Special">)</span> / <span class="Special">((</span>double<span class="Special">)</span> scalar_prod<span class="Special">))</span><span class="Constant">;</span>
+<span class="Constant">    else  *a = </span><span class="Special">(</span>float<span class="Special">)</span><span class="Constant"> </span><span class="Special">(((</span>double<span class="Special">)</span> scalar_prod<span class="Special">)</span> / <span class="Special">((</span>double<span class="Special">)</span> abs<span class="Special">))</span><span class="Constant">;</span>
+<span class="Constant">    if</span><span class="Special">(</span>*f_o - f_n_i &lt;= <span class="Type">@DEF_SIGMA_X°</span> * *scalar_prod__bo_nabla_f__bo_x_o_min_X__bc__bc<span class="Special">)</span>
+<span class="Constant">      *beta *= </span><span class="Type">@DEF_BETA_X°</span><span class="Constant">;</span>
+<span class="Constant">    *f_o = f_n_i; </span><span class="Comment">@dnl° </span><span class="Todo">TODO:</span><span class="Comment"> make sure to do via pointer-switching (double buffering): nabla_f_o = nabla_tilde_F</span>
+<span class="Constant">    *count = 0;´</span><span class="Type">)</span> <span class="Comment">@dnl° reduction across the partial sums</span>
+  }
+}
+<span class="Comment">@dnl° scalar_prod__bo_nabla_f__bo_x_o_min_X__bc__b @dnl° figure out where this came from. Git can help.</span>
+void optimizeX(float** f_h, float* x_h, float** y_k_h, int num_images){ <span class="Comment">@dnl° </span><span class="Todo">TODO:</span><span class="Comment"> convert the symbolic code to actual code</span>
+  <span class="Comment">@dnl° </span><span class="Todo">TODO:</span><span class="Comment"> maybe eventually make this use host memory where applicable </span>
+  cudaEvent_t events[num_images];
+  cudaStream_t streams[num_images];
+  cudaEvent_t helperEvents[2];
+
+  <span class="Type">@DEF_CUFFT_HANDLE(</span><span class="Constant">`f_p_X´</span><span class="Identifier">, </span><span class="Constant">`R´</span><span class="Identifier">, </span><span class="Constant">`streams´</span><span class="Identifier">, </span><span class="Special">(</span>,<span class="Special">)</span><span class="Identifier">, </span><span class="Special">()</span><span class="Identifier">, </span><span class="Constant">`num_images´</span><span class="Type">)</span>
+  <span class="Type">@DEF_CUFFT_HANDLE(</span><span class="Constant">`f_p_X_T´</span><span class="Identifier">, </span><span class="Constant">`R´</span><span class="Identifier">, </span><span class="Constant">`streams´</span><span class="Identifier">, </span><span class="Special">(</span><span class="Constant">`f_X_1_l_F´</span>,<span class="Special">)</span><span class="Identifier">, </span><span class="Special">(</span><span class="Constant">`f_T_p_conj_fft_X´</span>,<span class="Special">)</span><span class="Identifier">, </span><span class="Constant">`num_images´</span><span class="Type">)</span>
+  <span class="Type">@DEF_CUFFT_HANDLE(</span><span class="Constant">`x_p_X´</span><span class="Identifier">, </span><span class="Constant">`R´</span><span class="Identifier">, </span><span class="Constant">`</span><span class="Special">(</span>streams[0]<span class="Special">)</span><span class="Constant">´</span><span class="Identifier">, </span><span class="Special">(</span>,<span class="Special">)</span><span class="Identifier">, </span><span class="Special">()</span><span class="Type">)</span>
+  <span class="Type">@DEF_CUFFT_HANDLE(</span><span class="Constant">`F_k´</span><span class="Identifier">, </span><span class="Constant">`C´</span><span class="Identifier">, </span><span class="Constant">`streams´</span><span class="Identifier">, </span><span class="Special">(</span><span class="Constant">`F_X_m_F_X´</span>,<span class="Special">)</span><span class="Identifier">, </span><span class="Special">(</span><span class="Constant">`y_plus_y_X´</span>,<span class="Special">)</span><span class="Identifier">, </span><span class="Constant">`num_images´</span><span class="Type">)</span>
+  <span class="Type">@DEF_CUFFT_HANDLE(</span><span class="Constant">`v_3_X_T_F´</span><span class="Identifier">, </span><span class="Constant">`R´</span><span class="Identifier">, </span><span class="Constant">`streams´</span><span class="Identifier">, </span><span class="Special">(</span>,<span class="Special">)</span><span class="Identifier">, </span><span class="Special">()</span><span class="Identifier">, </span><span class="Constant">`num_images´</span><span class="Type">)</span>
+  <span class="Type">@DEF_CUFFT_HANDLE(</span><span class="Constant">`F_T_k´</span><span class="Identifier">, </span><span class="Constant">`C´</span><span class="Identifier">, </span><span class="Constant">`streams´</span><span class="Identifier">, </span><span class="Special">(</span><span class="Constant">`F_X_m_F_X´</span>,<span class="Special">)</span><span class="Identifier">, </span><span class="Special">(</span><span class="Constant">`x_plus_x_weights_X´</span>,<span class="Special">)</span><span class="Identifier">, </span><span class="Constant">`num_images´</span><span class="Type">)</span>
+  <span class="Type">@DEF_CUFFT_HANDLE(</span><span class="Constant">`nabla_tilde_f_p´</span><span class="Identifier">, </span><span class="Constant">`R´</span><span class="Identifier">, </span><span class="Constant">`</span><span class="Special">(</span>streams[0]<span class="Special">)</span><span class="Constant">´</span><span class="Identifier">, </span><span class="Special">(</span><span class="Constant">`x_p_F´</span>,<span class="Special">)</span><span class="Identifier">, </span><span class="Special">()</span><span class="Type">)</span>
+  cudaEventCreateWithFlags(&amp;helperEvents[0], cudaEventDisableTiming);
+  cudaEventCreateWithFlags(&amp;helperEvents[1], cudaEventDisableTiming);
+  for (int k = 0; k &lt; num_images; k++) { <span class="Comment">@dnl° Create some events and streams, so we can better parallize the images where applicable.</span>
+    cudaEventCreateWithFlags(&amp;events[k], cudaEventDisableTiming);
+    cudaStreamCreate(&amp;streams[k]);
+  }
+  { // precompute F_{k,i,j} and F^T_{k,i,j}
+    for (int k = 0; k &lt; num_images; k++) {
+
+      // f_p_k{_i,j} := 2Dfft(gewichtung(zuSchnipselGröße(f_k{_i,j})))
+      // =&gt; F_{k,k,j}
+//      load_f_p_X() -&gt; NULL [stream k] <span class="Comment">@dnl° DONE see: plan_f_p_X[k]</span>
+
+      // f_t_p_k{_i,j} := conj(2Dfft(zuSchnipselGröße(f_k{_i,j})))
+      // =&gt; F^T_{k,i,j}
+//      load_f_X_1_F() -&gt; store_f_T_p_conj_fft_X() [stream k] <span class="Comment">@dnl° DONE see: plan_f_p_X_T[k]</span>
+
+      cudaEventRecord(events[k], streams[k]);
+    }
+  }
+  for (int k = 0; k &lt; num_images; k++)
+    cudaStreamWaitEvent(streams[0], events[k], 0);
+
+  while(true){ <span class="Comment">@dnl° fix this. Could result in an infinite loop if machine precision limits are reached in a bad enough way.</span>
+    for (int b = 0; b &lt; <span class="Type">@DEF_m°</span>; b++) {
+      // v_4 = 0
+      // X''{_i,j} = 2Dfft(X{_i,j})
+//      load_x_p_X() -&gt; NULL [stream 0] <span class="Comment">@dnl° DONE see: plan_x_p_X</span>
+
+      cudaEventRecord(helperEvents[0], streams[0]);
+      for (int k = 0; k &lt; num_images; k++) { <span class="Comment">@dnl° </span><span class="Todo">TODO:</span><span class="Comment"> use streams and/or pthreads for using the parallelism avaiable here.</span>
+
+        cudaStreamWaitEvent(streams[k], helperEvents[0], 0);
+
+        // y_k{i,j} = y_k{_i,j} + 2Difft(X''{_i,j} * F_k{_i,j})
+        // =&gt; F_k
+//        load_F_X_m_F_X() -&gt; store_y_plus_y_X() [stream k] <span class="Comment">@dnl° DONE see: plan_F_k</span>
+
+        // v_3 = clip^X_y(y_k) <span class="Comment">@dnl° Already done via the restriction to `X´, `Y´ in  the last statement.</span>
+        // v_3 = v_3 - y'_k
+//        kernel_v_3_gets_y_min...() <span class="Comment">@dnl° </span><span class="Todo">TODO:</span><span class="Comment"> make sure this gets a new f_n{_i} and count{_i} for each input image</span>
+        // v_4{_i,j} = v_4{_i,j} + .5 * gewichtung(2Difft(2Dfft(v_3{_i,j}) * f_t_p_k{_i,j}))
+        // =&gt; F^T_k
+//        load_v_3_X_T_F() -&gt; NULL; load_F_X_m_F_X() -&gt; store_x_plus_x_weights_X() [stream k] <span class="Comment">@dnl° *= .5; see: nabla_f_to_nabla_tilde_f_kernel_X @dnl° DONE: see plan_v_3_X_T_F @dnl° DONE see: plan_F_T_k</span>
+
+        cudaEventRecord(events[k], streams[k]);
+      }
+
+      for (int k = 0; k &lt; num_images; k++)
+        cudaStreamWaitEvent(streams[0], events[k], 0);
+
+      // nabla_f = v_4
+
+      // nabla_tilde_f = nabla_F * { nabla_F &gt; 0 &amp;&amp; x == 0}
+      // =&gt; active set classification
+
+      // v_4 = 0
+
+      // nabla_tilde_f'{_i,j} = 2Dfft(nabla_tilde_f{_i,j})
+
+/*      { <span class="Comment">@dnl° </span><span class="Todo">TODO:</span><span class="Comment"> this will be a single kernel. see: nabla_f_to_nabla_tilde_f_kernle_X</span>
+        v_4 *= .5; <span class="Comment">@dnl° grabbed this to not do it in store_y_plus_y_X()</span>
+        x_o = X;
+        nabla_tilde_f = v_4 &gt; 0 &amp;&amp; 0 == X ? 0 : v_4;
+        VX = x_o - \beta * \alpha * nabla_tilde_f;
+        scalar_prod__bo_nabla_f__bo_x_o_min_X__bc__bc = scalar_prod(nabla_f_o, (x_o - X));
+        nabla_f_o = nabla_tilde_f;
+      } [stream 0]
+*/
+      cudaEventRecord(helperEvents[0], streams[0]);
+
+      cudaStreamWaitEvent(streams[1], helperEvents[0], 0);
+//      v_4 = 0; [stream 1]
+      cudaEventRecord(helperEvents[1], streams[1]);
+
+//      nabla_tilde_f' = fft(nabla_tilde_f); [stream 0] <span class="Comment">@dnl° DONE see: plan_nabla_tilde_f_p</span>
+      cudaEventRecord(helperEvents[0], streams[0]);
+
+      for (int k = 0; k &lt; num_images; k++) {
+
+        cudaStreamWaitEvent(streams[k], helperEvents[0], 0);
+        // v_3{_i,j} = v_3{_i,j} + 2Difft(nabla_tilde_f'{_i,j} * f_p{_i,j})
+        // =&gt; F_k
+//        load_F_X_m_F_X() -&gt; store_y_plus_y_X() <span class="Comment">@dnl° DONE see: plan_F_k</span>
+
+        // v_3 = clip^X_y(v_3) <span class="Comment">@dnl° Already done via the restriction to `X´, `Y´ in  the last statement. @dnl° </span><span class="Todo">TODO:</span><span class="Comment"> check this out. Create an Issue for it.</span>
+
+        cudaStreamWaitEvent(streams[k], helperEvents[1], 0);
+        // v_4{_i,j} = v_4{_i,j} + gewichtung(2Difft(2Dfft(v_3{_i,j}) * f_t_p_k{_i,j}))
+        // =&gt; F^T_k
+//        load_v_3_X_T_F() -&gt; NULL; load_F_X_m_F_X() -&gt; store_x_plus_x_weights_X() <span class="Comment">@dnl° DONE see: plan_v_3_X_T_F @dnl° DONE see: plan_F_T_k</span>
+
+        cudaEventRecord(events[k], streams[k]);
+
+      }
+      // delta_f_tilde{_i,j} = v_4
+
+      // X = X - \beta * \alpha * nalba_f_tilde <span class="Comment">@dnl° DONE</span>
+      // =&gt; Update
+
+      for (int k = 0; k &lt; num_images; k++)
+        cudaStreamWaitEvent(streams[0], events[k], 0);
+
+/*      { <span class="Comment">@dnl° </span><span class="Todo">TODO:</span><span class="Comment"> incorporate everything from here on into the new kernel &quot;delta_nabla_f_tilde&quot;, so we can make use of the reduction for {scalar_prod(nabla_tilde_f, delta_tilde_f); Sum[f_n{_i}, {i, 0, num_images-1}], |nabla_tilde_f|^2, |delta_tilde_f|^2} and instantly use the result. In case of n_a &lt;= n_s set a pointer (in mapped host memory?) and later use that to decide wether to continue optimizeing or not.</span>
+        // delta_nabla_f_tilde = scalar_prod(nabla_f_tilde, delta_f_tilde)
+        delta_nabla_f_tilde = scalar_prod(nabla_tilde_f, delta_tilde_f);
+
+        if (b % 2 == 0) {
+          // n_a = |nabla_f_tilde|^2
+          if (n_a &lt;= n_s)
+            // return X;
+          else
+            // a = n_a / delta_nabla_f_tilde
+        } else
+          // a = delta_nabla_f_tilde / |delta_f_tilde|^2
+
+        // f_n = sum^{num_images}_{k=0}(|y_k - y_k'|^2)
+        if (f_o - f_n &lt;= \sigma * scalar_prod(nabla_f_o, (x_o -X)) ) { <span class="Comment">@dnl° scalar_prod(nabla_f_o, (x_o -X)) see: nabla_f_to_nabla_tilde_f_kernel_X</span>
+          // \beta = \eta * \beta
+        }
+
+        // f_o = f_n <span class="Comment">@dnl° see: delta_nabla_f_tilde_kernel_X</span>
+        // nabla_f_o = nabla_tilde_f <span class="Comment">@dnl° see: delta_nabla_f_tilde_kernel_X</span>
+      } [stream 0]*/
+      // x_o = X
+      <span class="Comment">@dnl° see: nabla_f_to_nabla_tilde_f_kernel_X</span>
+    }
+  }
+  cudaEventDestroy(helperEvents[0]);
+  cudaEventDestroy(helperEvents[1]);
+  for (int k = 0; k &lt; num_images; k++) { <span class="Comment">@dnl° Create some events and streams, so we can better parallize the images where applicable.</span>
+    cudaEventDestroy(events[k]);
+    cudaStreamDestroy(streams[k]); <span class="Comment">@dnl° </span><span class="Todo">TODO:</span><span class="Comment"> change this to the correct &quot;get rid of this stream&quot; thing.</span>
+  }
+}
+typedef struct optimizeF_helper_struct {
+  float* f_h;
+  float* y_k_h;
+  float* x_h; <span class="Comment">@dnl° temporary to fix more typos.</span>
+} optimizeF_helper_struct_t;
+void optimizeF_helper(void* datav) {
+  optimizeF_helper_struct_t *data = (optimizeF_helper_struct_t*) datav;
+  cudaStream_t stream;
+  cudaStreamCreate(&amp;stream);
+  optimizeF(data-&gt;f_h, data-&gt;y_k_h, data-&gt;x_h, stream);
+  while(cudaErrorNotReady == cudaStreamQuery(stream)) sched_yield();
+  cudaStreamDestroy(stream);
+  return;
+}
+void computeRecursive(float** f_h, float** y_k_h, float* x, int num_images){
+    pthread_t* threads;
+    threads = (pthread_t*) malloc(sizeof(pthread_t) * num_images);
+    if (num_images &gt; 2) {
+      <span class="Type">@DEF_CU_MALLOC(</span><span class="Constant">`x_h_1´</span><span class="Identifier">, </span><span class="Constant">`float´</span><span class="Identifier">, </span><span class="Constant">`</span><span class="Type">@DEF_SIZE_Y°</span><span class="Constant">´</span><span class="Identifier">, </span><span class="Constant">`h´</span><span class="Type">)</span>
+      <span class="Type">@DEF_CU_MALLOC(</span><span class="Constant">`x_h_2´</span><span class="Identifier">, </span><span class="Constant">`float´</span><span class="Identifier">, </span><span class="Constant">`</span><span class="Type">@DEF_SIZE_Y°</span><span class="Constant">´</span><span class="Identifier">, </span><span class="Constant">`h´</span><span class="Type">)</span>
+      computeRecursive(&amp;f_h[0], &amp;y_k_h[0], x_h_1, num_images/2);
+      computeRecursive(&amp;f_h[num_images/2], &amp;y_k_h[num_images/2], x_h_2, num_images/2);
+      for(int i=0; i &lt; num_images / 2;i++)
+        pthread_create(&amp;(threads[i]), NULL, (void* (*)(void *)) &amp;optimizeF_helper, (void*) &amp;((optimizeF_helper_struct_t) {.f_h = f_h[i], .y_k_h = y_k_h[i], .x_h = x_h_2}));
+      for(int i=num_images/2; i &lt; num_images; i++)
+        pthread_create(&amp;(threads[i]), NULL, (void* (*)(void *)) &amp;optimizeF_helper, (void*) &amp;((optimizeF_helper_struct_t) {.f_h = f_h[i], .y_k_h = y_k_h[i], .x_h = x_h_1}));
+      for(int i=0; i &lt; num_images; i++)
+        pthread_join(threads[i], NULL);
+      <span class="Type">@_free_stack°</span>
+    } else {
+      float* x_h_1 = y_k_h[1];
+      float* x_h_2 = y_k_h[0];
+      for(int i=0; i &lt; num_images / 2;i++)
+        pthread_create(&amp;(threads[i]), NULL, (void* (*)(void *)) &amp;optimizeF_helper, (void*) &amp;((optimizeF_helper_struct_t) {.f_h = f_h[i], .y_k_h = y_k_h[i], .x_h = x_h_2}));
+      for(int i=num_images/2; i &lt; num_images; i++)
+        pthread_create(&amp;(threads[i]), NULL, (void* (*)(void *)) &amp;optimizeF_helper, (void*) &amp;((optimizeF_helper_struct_t) {.f_h = f_h[i], .y_k_h = y_k_h[i], .x_h = x_h_1}));
+      for(int i=0; i &lt; num_images; i++)
+        pthread_join(threads[i], NULL);
+    }
+    optimizeX(f_h, x, y_k_h, num_images);
+    free(threads);
+  }
+int main(void) {
+  /*float* f_h[<span class="Type">@DEF_NUM_IMGS°</span>];
+  float* y_k_h[<span class="Type">@DEF_NUM_IMGS°</span>];
+  float* x;
+  <span class="Comment">@dnl° </span><span class="Todo">TODO:</span><span class="Comment"> implement the allocation of y_k_h...</span>
+  <span class="Comment">@dnl° </span><span class="Todo">TODO:</span><span class="Comment"> eventually switch to texture-based reading of the integer-based input images to conserve memory and enable bigger optimizeX inputs (num_images) to speed it up (also check if the host-memory access speed/PCIe transfer speed is the bottleneck for large optimizeX inputs (num_images)</span>
+  computeRecursive(f_h, y_k_h, x, <span class="Type">@DEF_NUM_IMGS°</span>);*/
+  return 0;
+}
+</pre>
+</body>
+</html>
+<!-- vim: set foldmethod=manual : -->

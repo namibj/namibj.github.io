@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>~/Downloads/mode_sorted_simple_i32.fut.html</title>
+<meta name="Generator" content="Vim/8.2">
+<meta name="plugin-version" content="vim8.1_v2">
+<meta name="syntax" content="none">
+<meta name="settings" content="use_css,pre_wrap,no_foldcolumn,prevent_copy=,use_input_for_pc=fallback">
+<meta name="colorscheme" content="none">
+<style>
+<!--
+pre { white-space: pre-wrap; font-family: monospace; color: #ffffff; background-color: #000000; }
+body { font-family: monospace; color: #ffffff; background-color: #000000; }
+* { font-size: 1em; }
+.Type { color: #00ff00; font-weight: bold; }
+.Comment { color: #00ffff; font-weight: bold; }
+.Constant { color: #ff40ff; font-weight: bold; }
+.Identifier { color: #00ffff; font-weight: bold; }
+.Statement { color: #ffff00; font-weight: bold; }
+-->
+</style>
+</head>
+<body>
+<pre id='vimCodeElement'>
+<span class="Type">type</span> partial = {data: <span class="Type">i32</span>, count: <span class="Type">u32</span>}
+<span class="Type">type</span> accumulator = {left: partial, right: partial}
+
+<span class="Statement">let</span> <span class="Identifier">merge</span> (left: partial) (right: partial): partial =
+	<span class="Statement">if</span> (trace left).data <span class="Statement">==</span> (trace right).data
+		<span class="Statement">then</span> trace {data = left.data, count = (left.count <span class="Statement">+</span> right.count)}
+	<span class="Statement">else</span>
+		<span class="Statement">if</span> left.count <span class="Statement">&gt;</span>= right.count
+			<span class="Statement">then</span> trace left
+		<span class="Statement">else</span> trace right
+
+<span class="Statement">let</span> <span class="Identifier">accumulate</span> (left: accumulator) (right: accumulator): accumulator =
+	<span class="Statement">let</span> <span class="Identifier">left_leaning</span> = (left.right.data <span class="Statement">&lt;</span> right.left.data)
+	<span class="Statement">let</span>
+
+<span class="Identifier">let</span> main (x: []<span class="Type">i32</span>): partial =
+	<span class="Statement">let</span> <span class="Identifier">entirety</span> = <span class="Identifier">reduce</span> (merge) {data = <span class="Constant">0</span>, count = <span class="Constant">0</span>} (<span class="Identifier">map</span> (\x <span class="Statement">-&gt;</span> {data = x, count = <span class="Constant">1</span>}) x)
+	<span class="Statement">in</span> entirety <span class="Comment">--.data</span>
+</pre>
+</body>
+</html>
+<!-- vim: set foldmethod=manual : -->

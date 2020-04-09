@@ -25,35 +25,92 @@ body { font-family: monospace; color: #839496; background-color: #002b36; }
 </head>
 <body>
 <pre id='vimCodeElement'>
-<span class="Type">type</span> partial = {data: <span class="Type">i32</span>, count: <span class="Type">u32</span>}
-<span class="Type">type</span> accumulator = {left: partial, right: partial}
+<span class="PreProc">module</span> <span class="Identifier">type</span> Ord_Sized = {
+  <span class="Type">type</span> v
+  <span class="Type">type</span> ord = #lt <span class="Statement">|</span> #eq <span class="Statement">|</span> #gt
+  <span class="Statement">val</span> cmp: v <span class="Statement">-&gt;</span> v <span class="Statement">-&gt;</span> ord
+  <span class="Statement">val</span> lt: v <span class="Statement">-&gt;</span> v <span class="Statement">-&gt;</span> <span class="Type">bool</span>
+  <span class="Statement">val</span> eq: v <span class="Statement">-&gt;</span> v <span class="Statement">-&gt;</span> <span class="Type">bool</span>
+  <span class="Statement">val</span> gt: v <span class="Statement">-&gt;</span> v <span class="Statement">-&gt;</span> <span class="Type">bool</span>
+}
 
-<span class="Statement">let</span> <span class="Identifier">merge</span> (right: partial) (left: partial): partial =
-	<span class="Statement">if</span> ( left).data <span class="Statement">==</span> ( right).data
-		<span class="Statement">then</span>  {data = left.data, count = (left.count <span class="Statement">+</span> right.count)}
-	<span class="Statement">else</span>
-		<span class="Statement">if</span> left.count <span class="Statement">&gt;</span>= right.count
-			<span class="Statement">then</span>  left
-		<span class="Statement">else</span>  right
+<span class="PreProc">module</span> <span class="Identifier">mode</span> (M: Ord_Sized) = {
+  <span class="Type">type</span> v = M.v
+  <span class="Type">type</span> result = {data: v, count: <span class="Type">u32</span>}
+  <span class="Type">type</span> partial = {max: result, acc: result}
+  <span class="Type">type</span> accumulator = #acc {left: partial, right: partial} <span class="Statement">|</span> #data v <span class="Statement">|</span> #none
 
-<span class="Statement">let</span> <span class="Identifier">accumulate</span> (right: accumulator) (left: accumulator): accumulator =
-	<span class="Statement">let</span> <span class="Identifier">middle</span> = trace (merge
-		(trace left).right (trace right).left)
-	<span class="Statement">in</span> (trace {left  = merge left.left middle, right = <span class="Comment">--merge</span>
-	 middle
-<span class="Comment">--	right.right</span>
-})
-	<span class="Comment">--let left_leaning = (left.right.data &lt; right.left.data)</span>
+<span class="Comment">--let merge (right: partial) (left: partial): partial =</span>
+<span class="Comment">--  if ( left).data == ( right).data</span>
+<span class="Comment">--    then  {data = left.data, count = (left.count + right.count)}</span>
+<span class="Comment">--  else </span>
+<span class="Comment">--    if left.count &gt;= right.count</span>
+<span class="Comment">--      then  left</span>
+<span class="Comment">--    else  right</span>
 
-<span class="Statement">let</span> <span class="Identifier">unity_partial</span> (x: <span class="Type">i32</span>): partial =
-	{data = x, count = <span class="Constant">1</span>}
 
-<span class="Statement">let</span> <span class="Identifier">unity_accumulator</span> (x: <span class="Type">i32</span>): accumulator =
-	{left = unity_partial x, right = {data = <span class="Constant">0</span>, count = <span class="Constant">0</span>}}
+  <span class="Statement">let</span> <span class="Identifier">make_partial</span> (count: <span class="Type">u32</span>) (data: v): partial =
+    <span class="Statement">let</span> <span class="Identifier">res</span> = {data, count}
+    <span class="Statement">in</span> {max = res, acc = res}
 
-<span class="Statement">let</span> <span class="Identifier">main</span> (x: []<span class="Type">i32</span>): accumulator =
-	<span class="Statement">let</span> <span class="Identifier">entirety</span> = <span class="Identifier">reduce</span> (accumulate) (<span class="Statement">let</span> <span class="Identifier">identity</span> = {data = <span class="Constant">0</span>, count = <span class="Constant">0</span>} <span class="Statement">in</span> {left = identity, right = identity}) (<span class="Identifier">map</span> (unity_accumulator) x)
-	<span class="Statement">in</span> entirety <span class="Comment">--.data</span>
+  <span class="Statement">let</span> <span class="Identifier">init_accumulator</span> (data: v): accumulator =
+    #data data
+
+  <span class="Statement">let</span> <span class="Identifier">add_right</span> (left: accumulator) (right: v): accumulator =
+    match left
+      case #none <span class="Statement">-&gt;</span> #data right
+      case #data left <span class="Statement">-&gt;</span> <span class="Statement">if</span> M.lt left right
+        <span class="Statement">then</span>
+          #acc {left = make_partial <span class="Constant">1</span> left, right = make_partial <span class="Constant">1</span> right}
+        <span class="Statement">else</span>
+          #acc {left = make_partial <span class="Constant">2</span> left, right = make_partial <span class="Constant">2</span> left}
+      case #acc acc <span class="Statement">-&gt;</span> #none
+
+  <span class="Statement">let</span> <span class="Identifier">accumulate</span> (left: accumulator) (right: accumulator): accumulator =
+    match right
+      case #none <span class="Statement">-&gt;</span> left
+      case #data input <span class="Statement">-&gt;</span> add_right left input
+      case _ <span class="Statement">-&gt;</span> left <span class="Comment">-- stub. TODO: impl other exhaustive cases</span>
+
+}
+  <span class="Comment">--{left = make_partial data, right = make_partial data}</span>
+
+<span class="Comment">--let unity_partial (x: i32): partial =</span>
+<span class="Comment">--  {data = x, count = 1}</span>
+
+<span class="Comment">--let unity_accumulator (x: i32): accumulator =</span>
+<span class="Comment">--  {left = unity_partial x, right = {data = 0, count = 0}}</span>
+
+<span class="Comment">--let main (x: []i32): accumulator =</span>
+<span class="Comment">--  let entirety = reduce (accumulate) (let identity = {data = 0, count = 0} in {left = identity, right = identity}) (map (unity_accumulator) x)</span>
+<span class="Comment">--  in entirety --.data</span>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  <span class="Comment">--  let middle = trace (merge</span>
+<span class="Comment">--    (trace left).right (trace right).left)</span>
+<span class="Comment">--  in (trace {left  = merge left.left middle, right = --merge</span>
+<span class="Comment">--   middle </span>
+<span class="Comment">--  right.right</span>
+<span class="Comment">--})</span>
+  <span class="Comment">--let left_leaning = (left.right.data &lt; right.left.data)</span>
 </pre>
 </body>
 </html>

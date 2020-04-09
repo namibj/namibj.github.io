@@ -64,7 +64,17 @@ body { font-family: monospace; color: #839496; background-color: #002b36; }
           #acc {left = make_partial <span class="Constant">1</span> left, right = make_partial <span class="Constant">1</span> right}
         <span class="Statement">else</span>
           #acc {left = make_partial <span class="Constant">2</span> left, right = make_partial <span class="Constant">2</span> left}
-      case #acc acc <span class="Statement">-&gt;</span> #none
+      case #acc acc <span class="Statement">-&gt;</span> <span class="Statement">if</span> M.lt acc.left.acc.data acc.right.acc.data
+        <span class="Statement">then</span> <span class="Comment">-- acc's left/right have separate data values. Leave acc.left alone.</span>
+          #acc (acc <span class="Statement">with</span> right = (acc.right <span class="Statement">with</span> acc =
+            <span class="Statement">let</span> <span class="Identifier">acc_right_acc</span> = acc.right.acc
+            <span class="Statement">in</span> <span class="Statement">if</span> M.eq acc_right_acc.data right
+              <span class="Statement">then</span>
+                acc_right_acc <span class="Statement">with</span> count = acc_right_acc.count <span class="Statement">+</span> <span class="Constant">1</span>
+              <span class="Statement">else</span>
+                {data = right, count = <span class="Constant">1</span>}))
+        <span class="Statement">else</span>
+          #none
 
   <span class="Statement">let</span> <span class="Identifier">accumulate</span> (left: accumulator) (right: accumulator): accumulator =
     match right

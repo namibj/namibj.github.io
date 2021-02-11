@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<!-- This file was created with the aha Ansi HTML Adapter. https://github.com/theZiz/aha -->
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="Content-Type" content="application/xml+xhtml; charset=UTF-8" />
+<title>blocked_profiling_impact.cat</title>
+</head>
+<body>
+<pre>
+<span style="font-weight:bold;">Benchmark #</span><span style="font-weight:bold;">1</span>: BLOCK_DIFFERENTIAL_DATAFLOW_PROFILING=0 target/release/rslint ../../engine262/engine262/src
+  Time (<span style="font-weight:bold;color:green;">mean</span> ± <span style="color:green;">σ</span>):     <span style="font-weight:bold;color:green;"> 9.510 s</span> ± <span style="color:green;"> 0.126 s</span>    [User: <span style="color:blue;">30.057 s</span>, System: <span style="color:blue;">1.276 s</span>]
+  Range (<span style="color:teal;">min</span> … <span style="color:purple;">max</span>):   <span style="color:teal;"> 9.358 s</span> … <span style="color:purple;"> 9.693 s</span>    10 runs
+ 
+<span style="font-weight:bold;">Benchmark #</span><span style="font-weight:bold;">2</span>: BLOCK_DIFFERENTIAL_DATAFLOW_PROFILING=1 target/release/rslint ../../engine262/engine262/src
+  Time (<span style="font-weight:bold;color:green;">mean</span> ± <span style="color:green;">σ</span>):     <span style="font-weight:bold;color:green;"> 9.029 s</span> ± <span style="color:green;"> 0.114 s</span>    [User: <span style="color:blue;">28.559 s</span>, System: <span style="color:blue;">0.697 s</span>]
+  Range (<span style="color:teal;">min</span> … <span style="color:purple;">max</span>):   <span style="color:teal;"> 8.826 s</span> … <span style="color:purple;"> 9.245 s</span>    10 runs
+ 
+<span style="font-weight:bold;">Summary</span>
+  '<span style="color:teal;">BLOCK_DIFFERENTIAL_DATAFLOW_PROFILING=1 target/release/rslint ../../engine262/engine262/src</span>' ran
+<span style="font-weight:bold;color:green;">    1.05</span> ± <span style="color:green;">0.02</span> times faster than '<span style="color:purple;">BLOCK_DIFFERENTIAL_DATAFLOW_PROFILING=0 target/release/rslint ../../engine262/engine262/src</span>'
+</pre>
+</body>
+</html>
